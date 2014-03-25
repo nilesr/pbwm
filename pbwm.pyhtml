@@ -1,0 +1,2739 @@
+<%!
+#TODO
+#	Forum
+#TODO but not going to get done
+#	Websocket userlist
+#	Websocket delete message
+import sys
+sys.path.append("/usr/local/lib/python2.7/site-packages/")
+sys.path.append("/usr/local/Cellar/python/2.7.6/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages/PyMySQL-0.6.1-py2.7.egg")
+import os, hashlib, random, base64, time, pymysql, traceback, re, markdown2, smtplib, imghdr
+from email.mime.text import MIMEText
+%>
+<%def name="generate_table_of_messages(list_of_stuff)">
+<table class="table">
+	<thead>
+		<tr><td>Timestamp</td><td>Priority</td><td>From</td><td>Message</td><td>Actions</td></tr>
+	</thead>
+	<tbody>
+		% for id in list_of_stuff:
+			<%
+				From, Missive, Priority, Timestamp = get_message_by_id(username,id)
+			%>
+			<!--Mail id: ${id}-->
+			<tr>
+				<td>
+					${time.strftime('%Y/%m/%d<br />%H:%M:%S', time.localtime(Timestamp))}
+				</td>
+				<td>
+					<span class="message_priority">
+						% for i in xrange(Priority):
+							!
+						% endfor
+					</span>
+				</td>
+				<td>
+					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(From) + '"'}>${From}</a>
+				</td>
+				<td>
+					${newline_to_br(shorten_to_reasonable_length(Missive,100))}
+				</td>
+				<td>
+					% if len(Missive) > 100:
+						<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/view/" + base64.urlsafe_b64encode(str(id)) + '"'}>View full message</a> - 
+					% endif
+					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/mark_as_read/" + base64.urlsafe_b64encode(str(id)) + '"'}>Mark as read</a> - 
+					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/delete/" + base64.urlsafe_b64encode(str(id)) + '"'}>Delete</a>
+				</td>
+			</tr>
+		% endfor
+	</tbody>
+</table>
+</%def>
+<%def name="render_post_function(post_id,poster,post_time,post_contents,permissions,show_table=False)">
+
+	Posted by: <span class="post_poster"><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(poster) + '"'}>${poster}</a></span><br />
+	Posted at: <span class="post_time">${time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(post_time)))}</span><br />
+	Shared with:
+	% if int(permissions) == 3:
+		Everyone
+	% elif int(permissions) == 2:
+		People with the permalink
+	% elif int(permissions) == 1:
+		People <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(poster) + '"'}>${poster}</a> follows
+	% else:
+		The poster only
+	% endif
+	<br />
+	% if poster == username:
+		<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/edit_post/" + base64.urlsafe_b64encode(str(post_id)) + '"'}>Edit post</a><br />
+		<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/delete_blog_post/" + base64.urlsafe_b64encode(str(post_id)) + '"'}>Delete post</a><br />
+	% endif
+	% if not username == "post_permalink":
+		<%
+			cur.execute("SELECT `Likes_This` FROM `Posts` WHERE `Post_ID` = '" + sql_validate(str(post_id)) + "';")
+		%>
+		% for subrow in cur.fetchall():
+			<%
+				likes_this = subrow[0]
+			%>
+			% if "," + username + "," in subrow[0]:
+				<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/unlike_post/" + base64.urlsafe_b64encode(str(post_id)) + '"'}>Unlike this post</a>
+			% else:
+				<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/like_post/" + base64.urlsafe_b64encode(str(post_id)) + '"'}>Like this post</a>
+			% endif
+			<%
+				break
+			%>
+		% endfor
+		<br />
+		<%
+			num_people_like_this = likes_this.count(",")-1
+			try:
+				show_full_table = False
+				tempvar = d['showlikes']
+				if tempvar.lower() == "true":
+					show_full_table = True
+			except:
+				pass
+		%>
+		% if show_table:
+			% if num_people_like_this != 1:
+				<a onClick="var elem=document.getElementById('likes_this');var hide=elem.style.display=='none';if(hide){elem.style.display='table'}else{elem.style.display='none'}"}>${num_people_like_this} people like this</a>
+			% else:
+				<a onClick="var elem=document.getElementById('likes_this');var hide=elem.style.display=='none';if(hide){elem.style.display='table'}else{elem.style.display='none'}"}>${num_people_like_this} person likes this</a>
+			% endif
+			% if not show_full_table:
+				<table id="likes_this" class="table" style="display:none;">
+				<noscript>
+					</table>
+					<table id="likes_this" class="table">
+				</noscript>
+			% else:
+				<table id="likes_this" class="table">
+			% endif
+			<thead>
+				<tr><td></td><td>Users who publicly like this post</td></tr>
+			</thead>
+			<tbody>
+				% for user in likes_this.split(","):
+					% if user:
+						<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(user) + '"'}>${user}</a></td></tr>
+					% endif
+				% endfor
+			</tbody>
+			</table>
+			<br />
+		% else:
+			% if num_people_like_this != 1:
+				<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/view_post/" + base64.urlsafe_b64encode(str(post_id)) + get_variable_character+'showlikes=True"'}>${num_people_like_this} people like this</a>
+			% else:
+				<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/view_post/" + base64.urlsafe_b64encode(str(post_id)) + get_variable_character+'showlikes=True"'}>${num_people_like_this} person likes this</a>
+			% endif
+			<br />
+		% endif
+		<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/view_post/" + base64.urlsafe_b64encode(str(post_id)) + '"'}>View entire post</a>
+		<br />
+		<%
+			cur.execute("SELECT COUNT(`Post_ID`) FROM `Comments` WHERE `Parent_post_id` = '" + sql_validate(str(post_id)) + "';")
+		%>
+		% for row in cur.fetchall():
+			% if row[0] == 1:
+				<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/view_comments/" + base64.urlsafe_b64encode(str(post_id)) + '"'}>1 comment</a>
+			% else:
+				<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/view_comments/" + base64.urlsafe_b64encode(str(post_id)) + '"'}>${row[0]} comments</a>
+			% endif
+			<%
+				break
+			%>
+		% endfor
+		<br />
+	% endif
+	<a href=${'"' + root_dir + "post_permalink/" + base64.urlsafe_b64encode(str(post_id)) + '"'}>Permalink to this post</a>
+	<br />
+	<p class="post_contents">${replace_specials(newline_to_br(post_contents))}</p>
+
+
+</%def>
+
+<%
+render = []
+file_storage_dir = "/var/www"
+fully_qualified_domain_name = "niles.mooo.com:4000"
+domain_name_no_port = fully_qualified_domain_name.split(":")[0]
+root_dir = "/pbwm-dynamic/"
+#root_dir = "/pbwm.pyhtml?pbwm="
+get_variable_character = "?"
+#get_variable_character = "&"
+def sql_validate(stuff):
+#	return re.sub("'","\\'",stuff)
+	return conn.escape_string(stuff)
+try:
+	args = d["pbwm"].split("/")
+except:
+	args = []
+	render.append("general_redirect")
+	general_redirect = root_dir
+css = "/pbwm/pbwm_static/themes/blue.css"
+debug = False#			debug = traceback.format_exc()
+general_redirect = False
+conn = pymysql.connect(host="127.0.0.1", port=3306, user="pbwm", passwd='', db="pbwm")
+conn.autocommit(1)
+cur = conn.cursor()
+def get_logged_in_users():
+	cur.execute("SELECT COUNT(`Timestamp`) FROM `sessions` WHERE `Timestamp` > "+str(int(time.time()) - 420)+";") # 7 minutes
+	num = cur.fetchone()[0]
+	return_value = '<a href="' + root_dir + "online\">"
+	if num != 1:
+		return_value += "There are currently " + str(num) + " users online in the last 7 minutes."
+	else:
+		return_value += "There is currently 1 user online in the last 7 minutes."
+	return_value += "</a>"
+	return return_value
+def get_profile_picture(user,classes):
+	if not user:
+		return
+	cur.execute("SELECT `type` FROM `Profile_pictures` WHERE `Username` = '"+sql_validate(user)+"';")
+	profile_user_image_type = cur.fetchone()[0]
+	image_classes = classes
+	if get_permissions(user)['profile_picture_has_border'] == 1:
+		image_classes += ["admin_profile_picture"]
+	if profile_user_image_type:
+		return "<img class=\""+" ".join(image_classes)+"\" src=" + '"' + "/pbwm/pbwm_data/" + user + "." + profile_user_image_type + '"' + " />"
+	return "<img class=\""+" ".join(image_classes)+"\" src=" + '"' + "/pbwm/pbwm_static/default.png" + '"' + " />"
+def replace_specials(stuff):
+	return stuff.replace("SPECIAL:args[0]",args[0]).replace("SPECIAL:args[1]",args[1])
+def check_if_valid_email(stuff):
+	return re.match(r"^[A-Za-z0-9\.\+_-]+@[A-Za-z0-9\._-]+\.[a-zA-Z]*$",stuff)
+def send_email_to_user(user,subject,missive,isemail = False,sendanyways = False):
+	if not isemail:
+		cur.execute("SELECT `Email` FROM `users` WHERE `Username` = '" + sql_validate(user) + "';")
+		for row in cur.fetchall():
+			email_to_send_to = row[0]
+			break
+		cur.execute("SELECT `Emails_sent_since_last_login` FROM `users` WHERE `Username` = '" + sql_validate(user) + "';")
+		for row in cur.fetchall():
+			emails_sent = row[0]
+			break
+	else:
+		email_to_send_to = user
+		emails_sent = 0
+	if sendanyways:
+		emails_sent = 0
+	if emails_sent < 3:
+		pass
+	elif emails_sent == 3:
+		missive = 'You have at least three notifications on hold on PBWM. You will recieve no more emails until you log in at <a href="http://' + fully_qualified_domain_name + '">http://' + fully_qualified_domain_name + "</a>"
+		subject = "You have at least three notifications on hold"
+	else:
+		return
+	cur.execute("UPDATE `users` SET `Emails_sent_since_last_login` = '" + sql_validate(str(emails_sent + 1)) + "' WHERE `Username` = '" + sql_validate(user) + "';")
+	missive += "<br /><br /><br /><span style=\"color:grey;font-size:0.5em;\">Sent from a PBWM automated bot. Do not respond to this message. This PBWM site is owned and operated at "+'<a href="http://' + fully_qualified_domain_name + '">http://' + fully_qualified_domain_name+"</a></span>"
+	msg = MIMEText(missive, 'html')
+	msg['Subject'] = subject
+	msg['From'] = "PyBlogWithMe@" + fully_qualified_domain_name
+	msg['To'] = email_to_send_to
+	s = smtplib.SMTP_SSL('smtp.gmail.com',465)
+	s.ehlo_or_helo_if_needed()
+	s.login("pyblogwithme@gmail.com","pass-pbwm")
+	s.sendmail("PyBlogWithMe@" + fully_qualified_domain_name, [email_to_send_to], msg.as_string())
+	s.quit()
+
+
+def shorten_to_reasonable_length(stuff,length):
+	if len(stuff) > length:
+		return stuff[0:length] + "... (truncated)"
+	else:
+		return stuff
+def newline_to_br(stuff):
+	stuff = stuff.replace("<","&lt;")
+	stuff = stuff.replace(">","&gt;")
+	stuff = stuff.replace("#","\#")
+	stuff = "<br />".join(stuff.split("\n"))
+	stuff = markdown2.markdown(stuff)
+	return stuff # Note that it is important that the newline to br happend AFTER we change < and > to html encoded chars.
+def delete_user(username):
+	cur.execute("DELETE FROM `users` WHERE `Username` = '" + sql_validate(username) + "';")
+	cur.execute("DELETE FROM `settings` WHERE `Username` = '" + sql_validate(username) + "';")
+	cur.execute("DELETE FROM `permissions` WHERE `Username` = '" + sql_validate(username) + "';")
+	cur.execute("DELETE FROM `Profiles` WHERE `Username` = '" + sql_validate(username) + "';")
+	cur.execute("DELETE FROM `Private_Messages` WHERE `To` = '" + sql_validate(username) + "';")
+	cur.execute("DELETE FROM `Login_Logs` WHERE `Username` = '" + sql_validate(username) + "';")
+	cur.execute("DELETE FROM `Following` WHERE `Username` = '" + sql_validate(username) + "';")
+	cur.execute("DELETE FROM `Posts` WHERE `Poster` = '" + sql_validate(username) + "';")
+	cur.execute("DELETE FROM `Comments` WHERE `Poster` = '" + sql_validate(username) + "';")
+	cur.execute("DELETE FROM `sessions` WHERE `Username` = '" + sql_validate(username) + "';")
+	cur.execute("DELETE FROM `Chat_messages` WHERE `Username` = '" + sql_validate(username) + "';")
+	cur.execute("SELECT `type` FROM `Profile_pictures` WHERE `Username` = '"+sql_validate(username)+"';")
+	type = str(cur.fetchone()[0])
+	os.remove(file_storage_dir+"/pbwm/pbwm_data/"+username+"."+type)
+	cur.execute("DELETE FROM `Profile_pictures` WHERE `Username` = '" + sql_validate(username) + "';")
+	cur.execute("SELECT `channel_banlist`,`channel_name` FROM `Chat_channels`;")
+	for row in cur.fetchall():
+		if "," + sql_validate(username) + "," in row[0]:
+			cur.execute("UPDATE `Chat_channels` SET `channel_banlist` = '"+row[0].replace(","+sql_validate(username)+",",",")+"' WHERE `channel_name` = '"+sql_validate(row[1])+"';")
+	cur.execute("SELECT `Likes_this`,`Post_ID` FROM `Comments`;")
+	for row in cur.fetchall():
+		if "," + sql_validate(username) + "," in row[0]:
+			cur.execute("UPDATE `Comments` SET `Likes_this` = '"+row[0].replace(","+sql_validate(username)+",",",")+"' WHERE `Post_ID` = '"+sql_validate(str(row[1]))+"';")
+	cur.execute("SELECT `Follows`,`Username` FROM `Following`;")
+	for row in cur.fetchall():
+		if "," + sql_validate(username) + "," in row[0]:
+			cur.execute("UPDATE `Following` SET `Follows` = '"+row[0].replace(","+sql_validate(username)+",",",")+"' WHERE `Username` = '"+sql_validate(row[1])+"';")
+	cur.execute("SELECT `Likes_this`,`Post_ID` FROM `Posts`;")
+	for row in cur.fetchall():
+		if "," + sql_validate(username) + "," in row[0]:
+			cur.execute("UPDATE `Posts` SET `Likes_this` = '"+row[0].replace(","+sql_validate(username)+",",",")+"' WHERE `Post_ID` = '"+sql_validate(str(row[1]))+"';")
+
+def rename_user(old,new):
+	try:
+		cur.execute("UPDATE `users` SET `Username` = '"+sql_validate(new)+"' WHERE `Username` = '"+sql_validate(old)+"';")
+		cur.execute("UPDATE `settings` SET `Username` = '"+sql_validate(new)+"' WHERE `Username` = '"+sql_validate(old)+"';")
+		cur.execute("UPDATE `permissions` SET `Username` = '"+sql_validate(new)+"' WHERE `Username` = '"+sql_validate(old)+"';")
+		cur.execute("UPDATE `Profiles` SET `Username` = '"+sql_validate(new)+"' WHERE `Username` = '"+sql_validate(old)+"';")
+		cur.execute("UPDATE `Private_Messages` SET `To` = '"+sql_validate(new)+"' WHERE `To` = '"+sql_validate(old)+"';")
+		cur.execute("UPDATE `Login_Logs` SET `Username` = '"+sql_validate(new)+"' WHERE `Username` = '"+sql_validate(old)+"';")
+		cur.execute("UPDATE `Following` SET `Username` = '"+sql_validate(new)+"' WHERE `Username` = '"+sql_validate(old)+"';")
+		cur.execute("UPDATE `Posts` SET `Poster` = '"+sql_validate(new)+"' WHERE `Poster` = '"+sql_validate(old)+"';")
+		cur.execute("UPDATE `Comments` SET `Poster` = '"+sql_validate(new)+"' WHERE `Poster` = '"+sql_validate(old)+"';")
+		cur.execute("UPDATE `sessions` SET `Username` = '"+sql_validate(new)+"' WHERE `Username` = '"+sql_validate(old)+"';")
+		cur.execute("UPDATE `Profile_pictures` SET `Username` = '"+sql_validate(new)+"' WHERE `Username` = '"+sql_validate(old)+"';")
+		cur.execute("UPDATE `Chat_messages` SET `Username` = '"+sql_validate(new)+"' WHERE `Username` = '"+sql_validate(old)+"';")
+		cur.execute("SELECT `channel_banlist`,`channel_name` FROM `Chat_channels`;")
+		for row in cur.fetchall():
+			if "," + sql_validate(old) + "," in row[0]:
+				cur.execute("UPDATE `Chat_channels` SET `channel_banlist` = '"+row[0].replace(","+sql_validate(old)+",",","+sql_validate(new)+",")+"' WHERE `channel_name` = '"+sql_validate(row[1])+"';")
+		cur.execute("SELECT `Likes_this`,`Post_ID` FROM `Comments`;")
+		for row in cur.fetchall():
+			if "," + sql_validate(old) + "," in row[0]:
+				cur.execute("UPDATE `Comments` SET `Likes_this` = '"+row[0].replace(","+sql_validate(old)+",",","+sql_validate(new)+",")+"' WHERE `Post_ID` = '"+sql_validate(str(row[1]))+"';")
+		cur.execute("SELECT `Follows`,`Username` FROM `Following`;")
+		for row in cur.fetchall():
+			if "," + sql_validate(old) + "," in row[0]:
+				cur.execute("UPDATE `Following` SET `Follows` = '"+row[0].replace(","+sql_validate(old)+",",","+sql_validate(new)+",")+"' WHERE `Username` = '"+sql_validate(row[1])+"';")
+		cur.execute("SELECT `Likes_this`,`Post_ID` FROM `Posts`;")
+		for row in cur.fetchall():
+			if "," + sql_validate(old) + "," in row[0]:
+				cur.execute("UPDATE `Posts` SET `Likes_this` = '"+row[0].replace(","+sql_validate(old)+",",","+sql_validate(new)+",")+"' WHERE `Post_ID` = '"+sql_validate(str(row[1]))+"';")
+	except:
+		#well shit
+		pass
+
+
+def get_message_by_id(username,id):
+	cur.execute("SELECT `From`, `Missive`, `Priority`, `Timestamp` FROM `Private_Messages` WHERE `Mail_ID` = '" + sql_validate(str(id)) + "' AND  ( `To` = '"+sql_validate(username)+"' OR `From` = '"+sql_validate(username)+"' );")
+	row = cur.fetchone()
+	return [row[0],row[1],row[2],row[3]]
+def get_number_of_unread_messages(username):
+	cur.execute("SELECT COUNT(`Mail_ID`) FROM `Private_Messages` WHERE `To` = '" + sql_validate(username) + "' AND `Read` = '0' AND `Deleted` = '0';")
+	return cur.fetchone()[0]
+def get_number_of_read_messages(username):
+	cur.execute("SELECT COUNT(`Mail_ID`) FROM `Private_Messages` WHERE `To` = '" + sql_validate(username) + "' AND `Read` = '1' AND `Deleted` = '0';")
+	return cur.fetchone()[0]
+	
+# We take the username and match it with the table, so users cannot mark other people's mail as read or unread
+def mark_message_as_read(username,id):
+	cur.execute("UPDATE `Private_Messages` SET `Read` = '1' WHERE `To` = '"+sql_validate(username)+"' AND `Mail_ID` = '" + sql_validate(str(id)) + "';")
+def mark_message_as_unread(username,id):
+	cur.execute("UPDATE `Private_Messages` SET `Read` = '0' WHERE `To` = '"+sql_validate(username)+"' AND `Mail_ID` = '" + sql_validate(str(id)) + "';")
+def get_all_unread_messages(username):
+	cur.execute("SELECT `Mail_ID` FROM `Private_Messages` WHERE `To` = '" + sql_validate(username) + "' AND `Read` = '0' AND `Deleted` = '0' ORDER BY `Mail_ID` DESC;")
+	x = []
+	for row in cur.fetchall():
+		x.append(row[0])
+	return x
+def get_all_read_messages(username):
+	cur.execute("SELECT `Mail_ID` FROM `Private_Messages` WHERE `To` = '" + sql_validate(username) + "' AND `Read` = '1' AND `Deleted` = '0' ORDER BY `Mail_ID` DESC;")
+	x = []
+	for row in cur.fetchall():
+		x.append(row[0])
+	return x
+def check_if_user_exists(username):
+	cur.execute("SELECT `Username` FROM `users` WHERE `Username` = '"+sql_validate(username)+"';")
+	if not cur.fetchall():
+		return False
+	else:
+		return True
+def get_permissions(username):
+	permissions = {}
+	cur.execute("SELECT `can_delete_users`, `can_view_administrative_panel`, `can_impersonate`, `can_generate_reports`, `can_send_messages_with_increased_priority`, `can_view_chat_admin_panel`, `can_ban_people_from_chat`, `can_clear_chat`, `can_alert_chat`, `can_lock_chat`, `can_talk_through_lock`, `is_distinguished_in_chat`, `can_erase_chat_messages`, `can_rename_account`, `can_edit_chat_messages`, `profile_picture_has_border`, `can_send_mass_messages` FROM `permissions` WHERE `Username` = '"+sql_validate(username)+"';")
+	row = cur.fetchone()
+	permissions['can_delete_users'] = int(row[0])
+	permissions['can_view_administrative_panel'] = int(row[1])
+	permissions['can_impersonate'] = int(row[2])
+	permissions['can_generate_reports'] = int(row[3])
+	permissions['can_send_messages_with_increased_priority'] = int(row[4])
+	permissions['can_view_chat_admin_panel'] = int(row[5])
+	permissions['can_ban_people_from_chat'] = int(row[6])
+	permissions['can_clear_chat'] = int(row[7])
+	permissions['can_alert_chat'] = int(row[8])
+	permissions['can_lock_chat'] = int(row[9])
+	permissions['can_talk_through_lock'] = row[10]
+	permissions['is_distinguished_in_chat'] = row[11]
+	permissions['can_erase_chat_messages'] = row[12]
+	permissions['can_rename_account'] = row[13]
+	permissions['can_edit_chat_messages'] = row[14]
+	permissions['profile_picture_has_border'] = row[15]
+	permissions['can_send_mass_messages'] = row[16]
+	return permissions
+def get_profile(username):
+	cur.execute("SELECT `Profile` from `Profiles` WHERE `Username` = '" + sql_validate(username) + "';")
+	for row in cur.fetchall():
+		return row[0]
+try:
+	username = args[0]
+	if len(d["pbwm"]) >= 1:
+		render = ["login_page"]
+except:
+	username = False
+	render = ["login_page"]
+
+
+try:
+	postpass = d['postpass']
+	postuser = d['postuser']
+except:
+	postpass = False
+	postuser = False
+	render.append("login_form_fields_missing")
+if postuser and postpass:
+	cur.execute("SELECT `Password`, `Salt` FROM `users` WHERE `Username`='"+sql_validate(postuser) + "';")
+	correctpassword = False
+	for row in cur.fetchall():
+		if hashlib.sha512(postpass + row[1]).hexdigest() == row[0]:
+			correctpassword = True
+			newsession = base64.urlsafe_b64encode(str(os.urandom(128)))
+			cur.execute("DELETE FROM `sessions` WHERE `Username` = '" + sql_validate(postuser) + "';" )
+			cur.execute("INSERT INTO `sessions` (Token,Timestamp,Username) VALUES('" + sql_validate(newsession) + "','" + sql_validate(str(time.time())) + "','" + postuser + "');")
+			break
+	if correctpassword:
+		render.append("redirect_to_dashboard")
+	else:
+		render.append("invalid_password")
+elif username == "login":
+	render = ["login_page"]
+elif username == "register":
+	render = ["register_page"]
+	register_token = base64.urlsafe_b64encode(os.urandom(32))
+	cur.execute("INSERT INTO `PendingUsers` (Token) VALUES('" + sql_validate(register_token) + "');")
+elif username == "register_step_two":
+	try:
+		tempvar = d['reguser']
+		tempvar = d['regpass']
+		tempvar = d['regemail']
+		del tempvar
+	except:
+		render.append("register_missing_form_fields")
+	try:
+		if check_if_user_exists(d['reguser']):
+			render = ["register_user_exists","register_page"]
+			register_token = args[1]
+		else:
+			register_token = args[1]
+			cur.execute("SELECT `Token` from `PendingUsers` WHERE `Token` = '" + sql_validate(register_token) + "' ;")
+			for row in cur.fetchall():
+				if register_token == row[0]:
+					if "," in d['reguser']:
+						render = ["register_comma_error","register_page"]
+						cur.execute("TRUNCATE TABLE `PendingUsers`;")
+					elif not check_if_valid_email(d['regemail']):
+						render = ["error_invalid_email","register_page"]
+						cur.execute("TRUNCATE TABLE `PendingUsers`;")
+					else:
+						email_validation_token = base64.urlsafe_b64encode(os.urandom(50))
+						salt = base64.urlsafe_b64encode(os.urandom(128))
+						send_email_to_user(d['regemail'],d['reguser'] + ", please validate email address","Your email validation link is below.<br /><a href=\"http://" + fully_qualified_domain_name + root_dir + "register_step_three/" + email_validation_token + "\">"+ fully_qualified_domain_name + root_dir + "register_step_three/" + email_validation_token +"</a>", isemail=True)
+						cur.execute("INSERT INTO `Pending_email_validation` (`Username`,`Password`,`Salt`,`Email`,`Registration_key`) VALUES('" + sql_validate(d['reguser']) + "','" + hashlib.sha512(sql_validate(d['regpass'] + salt)).hexdigest() + "','" + salt + "','" + sql_validate(d['regemail']) + "','"+email_validation_token+"');")
+						render = ["register_success","login_page"]
+						cur.execute("TRUNCATE TABLE `PendingUsers`;")
+				else:
+					render = ["register_token_error","register_page"]
+				break
+	except:
+		render = ["register_token_error","register_page"]
+elif username == "register_step_three":
+	try:
+		cur.execute("SELECT `Username`, `Password`, `Salt`, `Email` FROM `Pending_email_validation` WHERE `Registration_key` = '" + sql_validate(args[1]) + "';")
+		for row in cur.fetchall():
+			cur.execute("INSERT INTO `users` (`Username`,`Password`,`Salt`,`Email`) VALUES('" + sql_validate(row[0]) + "','" + row[1] + "','" + row[2] + "','" + sql_validate(row[3]) + "');")
+			cur.execute("INSERT INTO `permissions` (`Username`) VALUES('"+sql_validate(row[0])+"');")
+			cur.execute("INSERT INTO `settings` (`Username`,`css_theme`) VALUES('"+sql_validate(row[0])+"','green');")
+			cur.execute("INSERT INTO `Profiles` (`Username`,`Profile`) VALUES('"+sql_validate(row[0])+"','This is the default \"About Me\" page');")
+			cur.execute("INSERT INTO `Private_Messages` (`To`,`From`,`Missive`,`Timestamp`) VALUES('"+sql_validate(row[0])+"','Mailer Daemon', 'Welcome to PyBlogWithMe, "+sql_validate(row[0])+"','"+str(int(time.time()))+"');")
+			cur.execute("INSERT INTO `Login_Logs` (`Username`,`Time`,`IP_Address`) VALUES('"+sql_validate(row[0])+"','"+str(time.time())+"','"+environ["REMOTE_HOST"]+"');")
+			cur.execute("INSERT INTO `Following` (`Username`,`Follows`) VALUES('"+sql_validate(row[0])+"',',');")
+			cur.execute("INSERT INTO `Profile_pictures` (`type`,`Username`) VALUES('"+sql_validate(row[0])+"','png');")
+			cur.execute("DELETE FROM `Pending_email_validation` WHERE `Registration_key` = '" + sql_validate(args[1]) + "';") 
+			break
+		render = ["email_validation_success","login_page"]
+	except:
+		render = ["email_validation_unknown_error","login_page"]
+elif username == "post_permalink":
+	try:
+		view_post_post_id = base64.b64decode(args[1])
+		render = ["view_post_not_logged_in"]
+	except:
+		render.append("view_post_error_no_such_post")
+elif username == "recover":
+	render=["recover_form"]
+elif username == "recover_step_two":
+	try:
+		cur.execute("SELECT `Username` FROM `users` WHERE `Username` = '" + sql_validate(d['username_or_email']) + "' OR `Email` = '" + sql_validate(d['username_or_email']) + "';" )
+		row = cur.fetchone()
+		if not row:
+			render = ["recover_form","error_user_does_not_exist"]
+		else:
+			cur.execute("SELECT `timestamp` FROM `Pending_password_reset` WHERE `Username` = '" + sql_validate(row[0]) + "';")
+			subrow = cur.fetchone()
+			if not subrow:
+				subrow = [0]
+			if int(time.time()) - subrow[0] < 216000:
+				render = ["recover_form","recover_throttled"]
+			else:
+				token = base64.urlsafe_b64encode(os.urandom(50))
+				cur.execute("DELETE FROM `Pending_password_reset` WHERE `Username` = '" + sql_validate(row[0]) + "';")
+				cur.execute("INSERT INTO `Pending_password_reset` (`Username`, `token`, `timestamp`) VALUES('" + sql_validate(row[0]) + "','"+sql_validate(token)+"','"+sql_validate(str(int(time.time())))+"');")
+				url = "http://" + fully_qualified_domain_name + root_dir + "recover_step_three/" + token
+				send_email_to_user(row[0],"Password reset email for " + row[0],"Someone has requested a password reset for this account. If you did not do this, you can safely ignore this message. To reset your password, please click on the link below<br /><br /><a href=\""+url+"\">"+url+"</a>",sendanyways = True)
+				render = ["recover_form","recover_email_sent"]
+	except:
+		render = ["recover_form","recover_missing_fields"]
+elif username == "recover_step_three":
+	try:
+		cur.execute("SELECT `Username`, `timestamp` FROM `Pending_password_reset` WHERE `token` = '"+sql_validate(args[1])+"';")
+		row = cur.fetchone()
+		if row:
+			if int(time.time()) - row[1] > 216000:
+				render = ["recover_request_expired"]
+			else:
+				cur.execute("SELECT `Salt` FROM `users` WHERE `Username` = '" + sql_validate(row[0]) + "';" )
+				subrow = cur.fetchone()
+				newpass = base64.urlsafe_b64encode(os.urandom(10))
+				cur.execute("UPDATE `users` SET `Password` = '" + sql_validate(hashlib.sha512(newpass + subrow[0]).hexdigest()) + "' WHERE `Username` = '"+sql_validate(row[0])+"';")
+				cur.execute("DELETE FROM `Pending_password_reset` WHERE `Username` = '" + sql_validate(row[0]) + "';")
+				render = ["recover_success"]
+		else:
+			render = ["recover_unknown_failure"]
+	except:
+		render = ["recover_form","recover_missing_fields"]
+elif username == "private_policy":
+	render = ["private_policy"]
+elif username == "api":
+	render = ["api_documentation"]
+elif username == "online":
+	render = ["list_of_online_users"]
+elif username and ("redirect_to_dashboard" not in render):
+	try:
+		username = base64.urlsafe_b64decode(username)
+	except:
+		render.append("invalid_username")
+	if len(args) < 3:
+		pass
+	else:
+		try:
+			cur.execute("SELECT `Username`, `Token`, `Timestamp` from `sessions` WHERE `Token` = '" + sql_validate(args[1]) + "' AND `Username` = '" + sql_validate(username) + "' LIMIT 1;")
+			session_is_valid = False
+			for row in cur.fetchall():
+				if base64.urlsafe_b64decode(args[1]) == base64.urlsafe_b64decode(row[1]):
+					if (int(time.time()) - int(row[2])) < 300:
+						session_is_valid = True
+					else:
+						render.append("invalid_session")
+				else:
+					render.append("invalid_session")
+				break
+			if session_is_valid:
+#				cur.execute("UPDATE `sessions` SET `Timestamp`='" + sql_validate(str(int(time.time()))) + "' WHERE `Token` = '" + sql_validate(args[1]) + "';" )
+				cur.execute("UPDATE `users` SET `Emails_sent_since_last_login` = '0' WHERE `Username` = '"+sql_validate(username)+"';")
+				cur.execute("SELECT `Time`, `IP_Address` FROM `Login_Logs` WHERE `Username` = '" + sql_validate(username) + "';")
+				for row in cur.fetchall():
+					last_login_time = row[0]
+					last_login_address = row[1]
+					break
+				try:
+					cur.execute("UPDATE `Login_Logs` SET `IP_Address` = '" + sql_validate(environ["REMOTE_ADDR"]) + "', `Time` = '"+sql_validate(str(time.time()))+"' WHERE `Username` = '" + sql_validate(username) + "';")
+				except:
+					pass
+				render = ["login_successful"]
+				cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(username) + "';")
+				for row in cur.fetchall():
+					currently_following = row[0]
+					break
+				cur.execute("SELECT `css_is_custom`, `css_path`, `css_theme` FROM `settings` WHERE `Username` = '"+sql_validate(username)+"';")
+				for row in cur.fetchall():
+					css_is_custom = row[0]
+					css_path = row[1]
+					css_theme = row[2]
+					if int(css_is_custom) == 0:
+						css = "/pbwm/pbwm_static/themes/"+css_theme+".css"
+					else:
+						css = css_path
+					break
+				if check_if_user_exists(username):
+					permissions = get_permissions(username)
+					if permissions['can_view_administrative_panel'] == 1:
+						render.append("administrative_panel")
+					if args[2] == "dashboard":
+						render.append("dashboard")
+					if args[2] == "settings":
+						render.append("settings")
+						try:
+							testvar = args[3]
+							del testvar
+							if args[3] == "updatecss":
+								try:
+									testvar = d['css_theme']
+									testvar = d['custom_css_path']
+									del testvar
+									custom_css_enabled = 0
+									try:
+										testvar = d['custom_css_enabled']
+										if testvar:
+											custom_css_enabled = 1
+									except:
+										pass
+									cur.execute("UPDATE `settings` SET `css_is_custom` = '" + sql_validate(str(custom_css_enabled)) + "', `css_path` = '" + sql_validate(d['custom_css_path']) + "', `css_theme` = '" + sql_validate(d['css_theme']) + "' WHERE `Username` = '" + sql_validate(username) + "';" )
+									if custom_css_enabled == 1:
+										css = d['custom_css_path']
+									else:
+										css = "/pbwm/pbwm_static/themes/"+d['css_theme']+".css"
+									render.append("css_update_successful")
+								except:
+									render.append("css_update_error")
+							elif args[3] == "password_change":
+								try:
+									old_password = d['password_change_old_password']
+									new_password = d['password_change_new_password']
+									new_password_two = d['password_change_new_password_two']
+									if not new_password == new_password_two:
+										render.append("password_change_passwords_do_not_match")
+										render.append("settings")
+									else:
+										cur.execute("SELECT `Password`, `Salt` from `users` WHERE `Username` = '" + sql_validate(username) + "' LIMIT 1;")
+										old_password_is_correct = False
+										for row in cur.fetchall():
+											if hashlib.sha512(old_password + row[1]).hexdigest() == row[0]:
+												newsalt = base64.urlsafe_b64encode(os.urandom(128))
+												cur.execute("UPDATE `users` SET `Salt` = '" + sql_validate(newsalt) + "', `Password` = '" + sql_validate(hashlib.sha512(new_password + newsalt).hexdigest()) + "' WHERE `Username` = '"+sql_validate(username)+"' ;")
+												render.append("password_change_successful")
+											else:
+												render.append("password_change_old_password_incorrect")
+												render.append("settings")
+											break
+								except:
+									render.append("password_change_general_error")
+									render.append("settings")
+							elif args[3] == "email_change":
+								try:
+									old_email = d['email_change_old']
+									new_email = d['email_change_new']
+									cur.execute("SELECT `Email` from `users` WHERE `Username` = '" + sql_validate(username) + "' LIMIT 1;")
+									for row in cur.fetchall():
+										if old_email == row[0]:
+											if check_if_valid_email(new_email):
+												cur.execute("UPDATE `users` SET `Email` = '" + sql_validate(new_email) + "' WHERE `Username` = '" + sql_validate(username) + "';")
+												render.append("email_change_successful")
+											else:
+												render.append("error_invalid_email")
+										else:
+											render.append("email_change_wrong_old_email")
+										break
+								except:
+									render.append("email_change_failure")
+							elif args[3] == "profile_change":
+								try:
+									new_profile = d['profile_change_new_profile']
+									cur.execute("UPDATE `Profiles` SET `Profile` = '"+sql_validate(new_profile)+"' WHERE `Username` = '"+sql_validate(username)+"';")
+									render.append("profile_change_success")
+								except:
+									render.append("error_profile_change_error")
+							elif args[3] == "profile_picture_change":
+								try:
+									if len(d['file']) < 1048576:
+										temporary_file = open("/tmp/"+username,'w')
+										temporary_file.write(d["file"])
+										temporary_file.close()
+										type = imghdr.what("/tmp/"+username)
+										if not type in ['gif','png','tiff','jpeg','bmp']:
+											render.append("unsupported filetype")
+											os.remove("/tmp/"+username)
+										else:
+											os.rename("/tmp/"+username,file_storage_dir+"/pbwm/pbwm_data/"+username+"."+type)
+											cur.execute("UPDATE `Profile_pictures` SET `type` = '"+sql_validate(type)+"' WHERE `Username` = '"+sql_validate(username)+"';")
+									else:
+										render.append("file_too_large")
+								except:
+									render.append("profile_picture_change_error")
+							else:
+								render.append("unknown_command")
+						except:
+							render.append("settings")
+					if args[2] == "impersonate":
+						if permissions['can_impersonate'] == 1:
+							impersonate_string = False
+							try:
+								impersonate_string = d['impersonate_user']
+							except:
+								pass
+							if not impersonate_string:
+								render.append("impersonate_form")
+							else:
+								cur.execute("UPDATE `sessions` SET `Username` = '" + sql_validate(impersonate_string) + "' WHERE `Token` = '" + sql_validate(args[1]) + "';")
+								general_redirect = root_dir + base64.urlsafe_b64encode(impersonate_string) + "/" + args[1] + "/dashboard"
+								render.append("general_redirect")
+						else:
+							render.append('permission_denied')
+					if args[2] == "delete_account":
+						render.append("delete_account")
+					if args[2] == "really_delete_account":
+						delete_user(username)
+						render.append("redirect_to_login")
+						cur.execute("DELETE FROM `sessions` WHERE `Username` = '" + sql_validate(username) + "';" )
+					if args[2] == "delete_other_account":
+						delete_other_string = False
+						try:
+							delete_other_string = args[3]
+						except:
+							pass
+						if int(permissions['can_delete_users']) == 1:
+							render.append("delete_user_form")
+						else:
+							render.append("permission_denied")
+						if delete_other_string == "delete":
+							user_to_delete = False
+							try:
+								if int(permissions['can_delete_users']) == 1:
+									user_to_delete = d['delete_other_account_account']
+									if check_if_user_exists(user_to_delete):
+										render.append("user_deletion_successful")
+										delete_user(user_to_delete)
+									else:
+										render.append("delete_other_account_no_such_user")
+								else:
+									render.append("permission_denied")
+							except:
+								render.append("delete_user_form")
+						elif delete_other_string == "rename":
+							user_to_rename = False
+							try:
+								if int(permissions['can_rename_account']) == 1:
+									user_to_rename = d['delete_other_account_rename_old_username']
+									user_to_rename_to = d['delete_other_account_rename_new_username']
+									if check_if_user_exists(user_to_rename) and not check_if_user_exists(user_to_rename_to):
+										rename_user(user_to_rename,user_to_rename_to)
+										render.append("rename_success")
+									else:
+										render.append("rename_error_user_exists")
+								else:
+									render.append("permission_denied")
+							except:
+								render.append("delete_user_form")
+					if args[2] == "logout":
+						render.append("redirect_to_login")
+						cur.execute("DELETE FROM `sessions` WHERE `Username` = '" + sql_validate(username) + "';" )
+					if args[2] == "reports":
+						report_string = False
+						if not permissions['can_generate_reports'] == 1:
+							render.append("permission_denied")
+						else:
+							try:
+								report_string = args[3]
+								report_table = d['table']
+							except:
+								render.append("reports")
+							if report_string:
+								if report_string == "generate":
+									report_rows = []
+									cur.execute("SELECT * FROM `" + sql_validate(report_table) + "`;")
+									for row in cur.fetchall():
+										report_rows.append(row)
+									render.append("report_successful")
+								else:
+									render.append("reports")
+					if args[2] == "profile":
+						profile_user = username
+						try:
+							profile_user = sql_escape(d['profile_username'])
+						except:
+							try:
+								profile_user = base64.urlsafe_b64decode(args[3])
+							except:
+								pass
+						try:
+							if check_if_user_exists(profile_user):
+								render.append("profile_page")
+							else:
+								render.append("error_user_does_not_exist")
+						except:
+							render.append("error_profile_error")
+					if args[2] == "search":
+						render.append("search_form")
+						search_string = ""
+						search_results = []
+						render.append("debug")
+						debug = render
+						try:
+							search_string = d['post_search_string']
+						except:
+							try:
+								search_string = base64.urlsafe_b64decode(args[3])
+							except:
+								pass
+						if search_string == "":
+							render.append("search_results")
+							cur.execute("SELECT `Username` FROM `Users` ORDER BY `Username` ASC LIMIT 50;")
+							search_results = []
+							for row in cur.fetchall():
+								search_results += row
+						try:
+							if check_if_user_exists(search_string):
+								render.append("general_redirect")
+								general_redirect = root_dir+args[0]+"/"+args[1]+"/profile/"+base64.urlsafe_b64encode(search_string)
+							elif search_string != "":
+								cur.execute("SELECT `Username` from `users` WHERE `Username` LIKE '%" + sql_validate(search_string) + "%';")
+								results = cur.fetchall()
+								if results:
+									search_results = []
+									for row in results:
+										search_results += row
+									render.append("search_results")	
+								else:
+									render.append("search_no_results")
+						except:
+							render.append("error_search_error")
+					if args[2] == "messages":
+						messages_action = False
+						try:
+							messages_action = args[3]
+						except:
+							pass
+						if messages_action:
+							try:
+								if messages_action == "mark_as_read":
+									render.append("messages")
+									mark_message_as_read(username,base64.urlsafe_b64decode(args[4]))
+								elif messages_action == "mark_as_unread":
+									render.append("messages")
+									mark_message_as_unread(username,base64.urlsafe_b64decode(args[4]))
+								elif messages_action == "view":
+									render.append("messages")
+									view_full_message_from, view_full_message_string, tempvar, timestamp = get_message_by_id(username,base64.urlsafe_b64decode(args[4]))
+									render.append("view_full_message")
+								elif messages_action == "send_form":
+									render.append("send_form")
+									try:
+										messages_send_form_user_to_address_to = base64.urlsafe_b64decode(args[4])
+									except:
+										messages_send_form_user_to_address_to = ""
+								elif messages_action == "send_post":
+									cur.execute("SELECT `timestamp` FROM `Private_Messages` WHERE `From` = '"+sql_validate(username)+"' ORDER BY `timestamp` DESC LIMIT 1;")
+									row = cur.fetchone()
+									if not row:
+										row = [0]
+									if int(time.time()) - row[0] < 30:
+										render.append("messages")
+										render.append("message_send_throttled")
+									else:
+										user_exists = False
+										try:
+											user_exists = check_if_user_exists(d['send_post_to'])
+										except:
+											render.append("messages")
+											render.append("messages_send_post_user_does_not_exist")
+										if user_exists:
+											try:
+												if permissions["can_send_messages_with_increased_priority"] == 1 or (int(d['send_post_priority']) <= 3 and int(d['send_post_priority']) >= 0):
+													send_email_to_user(d['send_post_to'],"New message from " + username, "You have a new message from " + username + " on PBWM, at " + '<a href="http://' + fully_qualified_domain_name + '">http://' + fully_qualified_domain_name + "</a>. <br /> Message data is as follows. <br /><br />" + newline_to_br(d['send_post_missive']))
+													cur.execute("INSERT INTO `Private_Messages` (`To`, `From`, `Missive`, `Priority`, `timestamp`) VALUES ('"+sql_validate(d['send_post_to'])+"', '"+sql_validate(username)+"', '"+sql_validate(d['send_post_missive'])+"', '"+sql_validate(d['send_post_priority'])+"', '"+sql_validate(str(int(time.time())))+"');")
+													render.append("messages_send_post_success")
+												else:
+													render.append("permission_denied")
+												render.append("messages")
+											except:
+												render.append("messages_send_post_missing_values")
+												render.append("messages")
+										else:
+											render.append("messages_send_post_user_does_not_exist")
+											render.append("messages")
+								elif messages_action == "delete":
+									try:
+										messages_delete_id_delete_id = base64.urlsafe_b64decode(args[4])
+										cur.execute("UPDATE `Private_Messages` SET `Deleted` = '1' WHERE `To` = '" + sql_validate(username) + "' AND `Mail_ID` = '"+sql_validate(messages_delete_id_delete_id)+"';")
+										render.append("messages_delete_success")
+										render.append("messages")
+									except:
+										render.append("messages_delete_error")
+										render.append("messages")
+								elif messages_action == "undelete_everything":
+									try:
+										cur.execute("UPDATE `Private_Messages` SET `Deleted` = '0' WHERE `To` = '" + sql_validate(username) + "';")
+										render.append("messages")
+										render.append("messages_delete_everything_success")
+									except:
+										render.append("error_messages_undelete_everything_error")
+								elif messages_action == "view_sent":
+									render.append("view_sent")
+								else:
+									render.append("error_messages_unknown_action")
+									render.append("messages")
+							except:
+								render.append("messages")
+								render.append("error_messages_unknown_error")
+						else:
+							render.append("messages")
+					if args[2] == "follow":
+						try:
+							to_follow = base64.urlsafe_b64decode(args[3])
+							if check_if_user_exists(to_follow):
+								if not to_follow in currently_following.split(","):
+									new_following = currently_following + to_follow + ","
+									currently_following = new_following
+									cur.execute("UPDATE `Following` SET `Follows` = '" + sql_validate(new_following) + "' WHERE `Username` = '"+ sql_validate(username) + "';")
+									render.append("follow_successful")
+									render.append("profile_page")
+									profile_user = to_follow
+								else:
+									render.append("follow_error_already_following")
+							else:
+								render.append("follow_error_user_does_not_exist")
+						except:
+							render.append("follow_error_no_user_specified")
+					if args[2] == "unfollow":
+						try:
+							to_unfollow = base64.urlsafe_b64decode(args[3])
+							new_following = currently_following.replace("," + to_unfollow + ",",",")
+							currently_following = new_following
+							cur.execute("UPDATE `Following` SET `Follows` = '" + sql_validate(new_following) + "' WHERE `Username` = '"+ sql_validate(username) + "';")
+							render.append("unfollow_success")
+							render.append("profile_page")
+							profile_user = to_unfollow
+						except:
+							render.append("unfollow_error_no_user_specified")
+					if args[2] == "new_post":
+						render.append("new_post_form")
+					if args[2] == "execute_new_post":
+						try:
+							execute_post_permissions = d['execute_post_permissions']
+							execute_post_post_data = d['execute_post_post_data']
+							if int(execute_post_permissions) > 3 or int(execute_post_permissions) < 0:
+								render.append("execute_post_bad_privacy_settings")
+								render.append("new_post_form")
+							else:
+								new_post_data = ""
+								in_quotes = False
+								users_to_recieve_notifications = []
+								for word in execute_post_post_data.split(" "):
+									if in_quotes:
+										user_to_link_to += word + " "
+										if user_to_link_to[-2] == quote_style:
+											in_quotes = False
+											user_to_link_to = user_to_link_to[0:-2]
+											word = "[" + user_to_link_to + "](" + root_dir + "SPECIAL:args[0]/SPECIAL:args[1]/profile/"+base64.urlsafe_b64encode(user_to_link_to)+")"
+											users_to_recieve_notifications.append(user_to_link_to)
+										else:
+											continue
+									elif word[0] == "#":
+										word = "["+word+"]("+root_dir+"SPECIAL:args[0]/SPECIAL:args[1]/hashtag_search/"+get_variable_character+"hashtag_to_search="+word[1:]+")"
+									elif word[0] == "@":
+										if word[1] == '"' or word[1] == "'":
+											quote_style = word[1]
+											if quote_style == word[-1]:
+												users_to_recieve_notifications.append(word[2:-1])
+												word = "[" + word[2:-1] + "](" + root_dir + "SPECIAL:args[0]/SPECIAL:args[1]/profile/"+base64.urlsafe_b64encode(word[2:-1])+")"
+											else:
+												in_quotes = True
+												user_to_link_to = word[2:] + " "
+												continue
+										else:
+											users_to_recieve_notifications.append(word[1:])
+											word = "[" + word[1:] + "](" + root_dir + "SPECIAL:args[0]/SPECIAL:args[1]/profile/"+base64.urlsafe_b64encode(word[1:])+")"
+
+
+									new_post_data += word + " "
+								users_to_recieve_notifications = set(users_to_recieve_notifications)
+								users_to_recieve_notifications = list(users_to_recieve_notifications)
+								render.append("debug")
+								debug = users_to_recieve_notifications
+								for user in users_to_recieve_notifications:
+									if check_if_user_exists(user):
+										send_email_to_user(user,username + " mentioned you in a post!","Post data follows.<br /><br />" + replace_specials(newline_to_br(new_post_data)))
+								new_post_data = new_post_data[0:-1]
+								cur.execute("INSERT INTO `Posts` (`Poster`, `Time_Of_Posting`, `Post_Contents`, `privacy_settings`, `Likes_This`) VALUES ('"+sql_validate(username)+"', '"+str(int(time.time()))+"', '"+sql_validate(new_post_data)+" ','"+sql_validate(str(execute_post_permissions))+"', ',');")
+								render.append("posted_successfuly")
+								render.append("profile_page")
+								profile_user = username
+						except:
+							render.append("execute_post_unknown_error")
+							render.append("new_post_form")
+					if args[2] == "edit_post":
+						pass
+					if args[2] == "hashtag_search":
+						try:
+							search_query = d['hashtag_to_search']
+							render.append("hashtag_search_results")
+							hashtag_search_results = []
+						except:
+							pass
+						render.append("hashtag_search_form")
+					if args[2] == "like_post":
+						try:
+							view_post_post_id = base64.urlsafe_b64decode(args[3])
+							render.append("view_post")
+							try:
+								cur.execute("SELECT `Likes_This` FROM `Posts` WHERE `Post_ID` = '" + sql_validate(view_post_post_id) + "';")
+								for row in cur.fetchall():
+									currently_likes_this = row[0]
+									break
+								if ","+username+"," in currently_likes_this:
+									render.append("like_post_error_already_liked")
+								else:
+									new_likes_this = currently_likes_this + username + ","
+									cur.execute("UPDATE `Posts` SET `Likes_This` = '" + sql_validate(new_likes_this) + "' WHERE `Post_ID` = '"+sql_validate(view_post_post_id)+"';")
+									render.append("like_post_success")
+							except:
+								render.append("like_post_error")
+						except:
+							render.append("view_post_error_no_such_post")
+					if args[2] == "unlike_post":
+						try:
+							view_post_post_id = base64.urlsafe_b64decode(args[3])
+							render.append("view_post")
+							try:
+								cur.execute("SELECT `Likes_This` FROM `Posts` WHERE `Post_ID` = '" + sql_validate(view_post_post_id) + "';")
+								for row in cur.fetchall():
+									currently_likes_this = row[0]
+									new_likes_this = currently_likes_this.replace("," + username + ",",",")
+									cur.execute("UPDATE `Posts` SET `Likes_This` = '" + sql_validate(new_likes_this) + "' WHERE `Post_ID` = '"+sql_validate(view_post_post_id)+"';")
+									render.append("unlike_post_success")
+									break
+							except:
+								render.append("unlike_post_error")
+						except:
+							render.append("view_post_error_no_such_post")
+					if args[2] == "view_post":
+						try:
+							view_post_post_id = base64.urlsafe_b64decode(args[3])
+							render.append("view_post")
+							render.append("view_comments")
+						except:
+							render.append("view_post_error_no_such_post")
+					if args[2] == "search_for_posts":
+						render.append("blog_search_form")
+						try:
+							string_to_search_for = d['search_string']
+							render.append("blog_search_results")
+						except:
+							pass
+					if args[2] == "edit_post":
+						try:
+							cur.execute("SELECT `Post_ID`, `Poster` FROM `Posts` WHERE `Post_ID` = '" + sql_validate(base64.urlsafe_b64decode(args[3])) + "' LIMIT 1;")
+							for row in cur.fetchall():
+								if username != row[1]:
+									render.append("edit_post_error_not_your_post_to_edit")
+								else:
+									post_to_edit = row[0]
+									render.append("edit_post_form")
+								break
+						except:
+							render.append("edit_post_error_general_error")
+					if args[2] == "execute_edit_post":
+						try:
+							cur.execute("SELECT `Post_ID`, `Poster` FROM `Posts` WHERE `Post_ID` = '" + sql_validate(base64.urlsafe_b64decode(args[3])) + "' LIMIT 1;")
+							for row in cur.fetchall():
+								if username != row[1]:
+									render.append("edit_post_error_not_your_post_to_edit")
+								else:
+									cur.execute("UPDATE `Posts` SET `Post_Contents` = '" + sql_validate(d['edit_post_new_contents']) + "', `privacy_settings` = '" + sql_validate(d['edit_post_new_privacy_settings']) + "' WHERE `Post_ID` = '" + sql_validate(base64.urlsafe_b64decode(args[3])) + "';")
+									render.append("view_post")
+									render.append("edit_post_success")
+									view_post_post_id = base64.urlsafe_b64decode(args[3])
+								break
+						except:
+							render.append("edit_post_error_unknown_error")
+					if args[2] == "view_comments":
+						try:
+							view_post_post_id = base64.urlsafe_b64decode(args[3])
+							render.append("view_post")
+							render.append("view_comments")
+						except:
+							render.append("view_post_error_no_such_post")
+					if args[2] == "new_comment_post":
+						try:
+							new_comment_parent_id = base64.urlsafe_b64decode(args[3])
+							new_comment_comment_data = d['new_comment_comment_data']
+							cur.execute("SELECT `Post_time` FROM `Comments` WHERE `Poster` = '" + sql_validate(username) + "' ORDER BY `Post_time` DESC;")
+							row = cur.fetchone()
+							if not row:
+								row = [0]
+							if int(time.time()) - int(row[0]) > 30:
+								cur.execute("INSERT INTO `Comments` (`Poster`, `Post_time`, `Comment_data`, `Parent_post_id`, `Likes_This`) VALUES ('"+sql_validate(username)+"', '"+sql_validate(str(int(time.time())))+"', '"+sql_validate(new_comment_comment_data)+" ','"+sql_validate(str(new_comment_parent_id))+"', ',');")
+								render.append("comment_posted_successfuly")
+							else:
+								render.append("error_comment_throttled")
+							render.append("view_post")
+							render.append("view_comments")
+							view_post_post_id = new_comment_parent_id
+						except:
+							try:
+								view_post_post_id = base64.urlsafe_b64decode(args[3])
+								render.append("execute_comment_identical_comment")
+								render.append("view_post")
+								render.append("view_comments")
+							except:
+								render.append("execute_comment_unknown_error")
+					if args[2] == "who_does_x_follow":
+						try:
+							profile_user = base64.urlsafe_b64decode(args[3])
+							render.append("profile_page")
+							render.append("who_does_x_follow_page")
+						except:
+							render.append("user_does_not_exist")
+					if args[2] == "view_comment":
+						try:
+							view_comment_comment_id = base64.urlsafe_b64decode(args[3])
+							render.append("view_comment_page")
+						except:
+							render.append("view_comment_error_unknown_error")
+					if args[2] == "edit_comment":
+						try:
+							edit_comment_comment_id = base64.urlsafe_b64decode(args[3])
+							render.append("edit_comment_form")
+						except:
+							render.append("edit_comment_error_unknown_error")
+					if args[2] == "execute_edit_comment":
+						try:
+							cur.execute("SELECT `Post_ID`, `Poster` FROM `Comments` WHERE `Post_ID` = '" + sql_validate(base64.urlsafe_b64decode(args[3])) + "' LIMIT 1;")
+							for row in cur.fetchall():
+								if username != row[1]:
+									render.append("edit_comment_error_not_your_comment_to_edit")
+								else:
+									cur.execute("UPDATE `Comments` SET `Comment_data` = '" + sql_validate(d['edit_comment_new_contents']) + "' WHERE `Post_ID` = '" + sql_validate(base64.urlsafe_b64decode(args[3])) + "';")
+									render.append("view_comment_page")
+									render.append("edit_comment_success")
+									view_comment_comment_id = base64.urlsafe_b64decode(args[3])
+								break
+						except:
+							render.append("edit_comment_unknown_error")
+					if args[2] == "delete_comment":
+						render.append("back_to_dashboard_link")
+						try:
+							id_to_delete = base64.urlsafe_b64decode(args[3])
+							cur.execute("SELECT `Poster` FROM `Comments` WHERE `Comment_ID` = '" + sql_validate(id_to_delete) + "';")
+							for row in cur:
+								if username == row[0]:
+									cur.execute("DELETE FROM `Comments` WHERE `Comment_ID` = '" + sql_validate(id_to_delete) + "';")
+									render.append("delete_comment_success")
+								else:
+									render.append("delete_comment_not_your_comment")
+								break
+						except:
+							render.append("delete_comment_unknown_error")
+					if args[2] == "delete_blog_post":
+						render.append("back_to_dashboard_link")
+						try:
+							id_to_delete = base64.urlsafe_b64decode(args[3])
+							cur.execute("SELECT `Poster` FROM `Posts` WHERE `Post_ID` = '" + sql_validate(id_to_delete) + "';")
+							for row in cur:
+								if username == row[0]:
+									cur.execute("DELETE FROM `Posts` WHERE `Post_ID` = '" + sql_validate(id_to_delete) + "';")
+									render.append("delete_post_success")
+								else:
+									render.append("delete_post_not_your_post")
+								break
+						except:
+							render.append("delete_post_unknown_error")
+					if args[2] == "who_follows":
+						try:
+							profile_user = base64.urlsafe_b64decode(args[3])
+							render.append("profile_page")
+							render.append("who_follows")
+						except:
+							render.append("user_does_not_exist")
+					if args[2] == "chat":
+						try:
+							chat_channel = args[4]
+						except:
+							chat_channel = "global"
+						cur.execute("SELECT `channel_is_locked` FROM `Chat_channels` WHERE `channel_name` = '"+sql_validate(chat_channel)+"';")
+						try:
+							chat_is_locked = cur.fetchone()[0]
+						except:
+							chat_is_locked = 0
+							cur.execute("INSERT INTO `Chat_channels` (`channel_name`, `channel_banlist`) VALUES('"+sql_validate(chat_channel)+"',',');")
+						try:
+							chat_action = args[3]
+						except:
+							chat_action = False
+						if chat_action:
+							if chat_action == "post_message":
+								try:
+									try:
+										chat_channel = d['channel']
+									except:
+										chat_channel = "global"
+									message_to_log = False
+									not_a_command = False
+									if not permissions['is_distinguished_in_chat']:
+										user_chat_color = "#646464"
+									else:
+										cur.execute("SELECT `Chat_color` FROM `Users` WHERE `Username` = '" + sql_validate(username) + "';")
+										user_chat_color = cur.fetchone()[0]
+									cur.execute("SELECT `channel_banlist` FROM `Chat_channels` WHERE `channel_name` = '"+sql_validate(chat_channel)+"';")
+									list_of_banned_people = cur.fetchone()[0]
+									passed_text = d['text']
+									new_passed_text = ""
+									message_special_type = 0
+									for word in passed_text.split(" "):
+										if word[0] == "#":
+											word = "[" + word + "](" + root_dir + "SPECIAL:args[0]/SPECIAL:args[1]/chat/" + word[1:] + ")"
+										new_passed_text += word + " "
+									passed_text = new_passed_text[0:-1]
+									if "," + username + "," in list_of_banned_people and not permissions["can_talk_through_lock"] == 1:
+										return
+									if d['text'][0:5].lower() == "/ban ":
+										if permissions["can_ban_people_from_chat"] == 1 and check_if_user_exists(d['text'][5:]):
+											new_list_of_banned_people = list_of_banned_people + d['text'][5:] + ","
+											cur.execute("UPDATE `Chat_channels` SET `channel_banlist` = '" + new_list_of_banned_people + "' WHERE `channel_name` = '"+sql_validate(chat_channel)+"';")
+										else:
+											return
+									elif d['text'][0:7].lower() == "/unban ":
+										if permissions["can_ban_people_from_chat"] == 1:
+											cur.execute("SELECT `channel_banlist` FROM `Chat_channels` WHERE `channel_name` = '"+sql_validate(chat_channel)+"';")
+											new_list_of_banned_people = list_of_banned_people.replace("," + d['text'][7:] + ",",",")
+											cur.execute("UPDATE `Chat_channels` SET `channel_banlist` = '" + new_list_of_banned_people + "' WHERE `channel_name` = '"+sql_validate(chat_channel)+"';")
+										else:
+											return
+									elif d['text'][0:6].lower() == "/clear":
+										if permissions["can_clear_chat"] == 1:
+											cur.execute("DELETE FROM `Chat_messages` WHERE `Channel` = '"+sql_validate(chat_channel)+"';")
+											message_to_log = "<span style=\"color:red;font-weight:bold;font-size:1.1em;\"><span class=\"chat_username\"><a style=\"color:red;\" href=" + '"' + root_dir + "SPECIAL:args[0]" + "/" + "SPECIAL:args[1]" + "/profile/" + base64.urlsafe_b64encode(username) + '"' + ">" + username + "</a></span> has cleared the chat</span>"
+											message_special_type = 1
+										else:
+											return
+									elif d['text'][0:6].lower() == "/erase":
+										if permissions["can_clear_chat"] == 1:
+											cur.execute("DELETE FROM `Chat_messages` WHERE `Channel` = '"+sql_validate(chat_channel)+"';")
+											message_special_type = 1
+											if len(d['text']) >= 7:
+												message_to_log = "<span style=\"color:red;font-weight:bold;font-size:1.1em;\">"+d['text'][7:]+"</span>"
+											else:
+												message_to_log = "SPECIAL:DO-NOT-DISPLAY"
+										else:
+											return
+									elif d['text'][0:6].lower() == "/alert":
+										if permissions["can_alert_chat"] == 1:
+											message_to_log = "<span style=\"color:red;font-weight:bold;font-size:1.1em;\">"+d['text'][7:]+"</span>"
+										else:
+											return
+									elif d['text'][0:5].lower() == "/lock":
+										if permissions["can_lock_chat"] == 1:
+											cur.execute("UPDATE `Chat_channels` SET `channel_is_locked` = '1' WHERE `channel_name` = '"+sql_validate(chat_channel)+"';")
+											chat_is_locked = 1
+											message_to_log = "<span style=\"color:grey;font-weight:bold;font-size:1.1em;\"><span class=\"chat_username\"><a style=\"color:red;\" href=" + '"' + root_dir + "SPECIAL:args[0]" + "/" + "SPECIAL:args[1]" + "/profile/" + base64.urlsafe_b64encode(username) + '"' + ">" + username + "</a></span> has locked the chat</span>"
+										else:
+											return
+									elif d['text'][0:7].lower() == "/unlock":
+										if permissions["can_lock_chat"] == 1:
+											cur.execute("UPDATE `Chat_channels` SET `channel_is_locked` = '0' WHERE `channel_name` = '"+sql_validate(chat_channel)+"';")
+											chat_is_locked = 0
+											message_to_log = "<span style=\"color:grey;font-weight:bold;font-size:1.1em;\"><span class=\"chat_username\"><a style=\"color:red;\" href=" + '"' + root_dir + "SPECIAL:args[0]" + "/" + "SPECIAL:args[1]" + "/profile/" + base64.urlsafe_b64encode(username) + '"' + ">" + username + "</a></span> has unlocked the chat</span>"
+										else:
+											return
+									elif d['text'][0:16].lower() == "/delete_message ":
+										if permissions["can_erase_chat_messages"] == 1:
+											cur.execute("UPDATE `Chat_messages` SET `Message` = '" + "<span style=\"color:grey;font-weight:bold;font-size:0.9em;\">Message erased by <span class=\"chat_username\"><a style=\"color:red;\" href=" + '"' + root_dir + "SPECIAL:args[0]" + "/" + "SPECIAL:args[1]" + "/profile/" + base64.urlsafe_b64encode(username) + '"' + ">" + username + "</a></span></span>" + "' WHERE `Message_ID` = '"+d['text'][16:]+"';")
+										else:
+											return
+									elif d['text'][0:11].lower() == "/set_color ":
+										cur.execute("UPDATE `Users` SET `Chat_color` = '"+sql_validate(d['text'][11:])+"' WHERE `Username` = '"+sql_validate(username)+"';")
+										return
+									elif d['text'][0:4].lower() == "/me ":
+										not_a_command = True
+										message_to_log = "* <span class=\"chat_username\"><a style=\"color:"+user_chat_color+";\" href=" + '"' + root_dir + "SPECIAL:args[0]" + "/" + "SPECIAL:args[1]" + "/profile/" + base64.urlsafe_b64encode(username) + '"' + ">" + username + "</a></span> <span style=\"color:"+user_chat_color+";\">" + newline_to_br(shorten_to_reasonable_length(passed_text[4:],400)) + "</span>"
+									elif d['text'][0:16].lower() == "/update_message ":
+										not_a_command = False
+										try:
+											id_to_edit = d['text'].split(" ")[1]
+											new_message = d['text'][16+len(str(id_to_edit))+1:]
+											cur.execute("UPDATE `Chat_messages` SET `Message` = '"+sql_validate(new_message)+"' WHERE `Message_ID` = '"+sql_validate(id_to_edit)+"';")
+										except:
+											return
+									else:
+										not_a_command = True
+										message_to_log = "<span class=\"chat_username\"><a style=\"color:"+user_chat_color+";\" href=" + '"' + root_dir + "SPECIAL:args[0]" + "/" + "SPECIAL:args[1]" + "/profile/" + base64.urlsafe_b64encode(username) + '"' + ">" + username + "</a></span>: " + newline_to_br(shorten_to_reasonable_length(passed_text,400))
+									if message_to_log:
+										
+										if chat_is_locked == 1 and not permissions['can_talk_through_lock'] == 1:
+											return
+										else:
+											if not not_a_command: # Do not rate throttle commands, only messages
+												pass
+											else:
+												cur.execute("SELECT `Timestamp` FROM `Chat_messages` WHERE `Username` = '" + sql_validate(username) + "' ORDER BY `Timestamp` DESC LIMIT 1;")
+												row = cur.fetchone()
+												if row:
+													last_message_time = row[0]
+												else:
+													last_message_time = False
+												if last_message_time:
+													if int(time.time()) - last_message_time <= 1:
+														return
+											bad = ['cunt', 'nigger', 'bitch', 'fuck', 'fag', 'faggot', 'kike', ' ass ', 'dumbass', 'smartass', ' i ', 'ass.', 'ass!', 'ass?', 'ass,', 'shit']
+											good = ['c***', '******', 'b**ch', 'f**k', '***', '******', 'k*ke', ' *** ', 'dumb***', 'smart***', ' I ', '***.', '***!', '***?', '***,', 'sh*t']
+											for i in xrange(len(bad)):
+												message_to_log = message_to_log.replace(bad[i],good[i])
+											cur.execute("INSERT INTO `Chat_messages` (`Username`, `Timestamp`, `Message`, `Channel`, `Special_type`) VALUES ('"+sql_validate(username)+"','"+sql_validate(str(int(time.time())))+"','"+sql_validate(message_to_log)+"', '"+sql_validate(chat_channel)+"','"+sql_validate(str(message_special_type))+"');")
+											return
+									else:
+										pass
+								except:
+									render.append("chat_unknown_error")
+							elif chat_action == "embedded":
+								render.append("chat_embedded")
+							elif chat_action == "banlist":
+								render.append("chat_banlist")
+							else:
+								render.append("chat_url")
+								chat_channel = chat_action
+						else:
+							render.append("chat_url")
+					elif args[2] == "like_comment":
+						try:
+							view_comment_comment_id = base64.urlsafe_b64decode(args[3])
+							cur.execute("SELECT `Likes_this` FROM `Comments` WHERE `Post_ID` = '"+sql_validate(view_comment_comment_id)+"';")
+							likes_this_comment = cur.fetchone()[0]
+							if "," + username + "," in likes_this_comment:
+								render.append("like_comment_error_already_liked")
+							else:
+								cur.execute("UPDATE `Comments` SET `Likes_this` = '"+sql_validate(likes_this_comment)+sql_validate(username)+",' WHERE `Post_ID` = '"+sql_validate(view_comment_comment_id)+"';")
+								render.append("like_comment_success")
+							render.append("view_comment_page")
+						except:
+							render.append("like_comment_error")
+					elif args[2] == "dislike_comment":
+						try:
+							view_comment_comment_id = base64.urlsafe_b64decode(args[3])
+							cur.execute("SELECT `Likes_this` FROM `Comments` WHERE `Post_ID` = '"+sql_validate(view_comment_comment_id)+"';")
+							likes_this_comment = cur.fetchone()[0].replace(","+sql_validate(username)+",",",")
+							cur.execute("UPDATE `Comments` SET `Likes_this` = '"+sql_validate(likes_this_comment)+"' WHERE `Post_ID` = '"+sql_validate(view_comment_comment_id)+"';")
+							render.append("dislike_comment_success")
+							render.append("view_comment_page")
+						except:
+							render.append("dislike_comment_error")
+					elif args[2] == "mass_message":
+						if permissions['can_send_mass_messages'] == 1:
+							try:
+								mass_message_data = d['mass_message_data']
+								cur.execute("SELECT `Username` FROM `Users`")
+								users = []
+								for row in cur.fetchall():
+									users += row
+								for user in users:
+									send_email_to_user(user,"New message from " + username, "You have a new message from " + username + " on PBWM, at " + '<a href="http://' + fully_qualified_domain_name + '">http://' + fully_qualified_domain_name + "</a>. <br /> Message data is as follows. <br /><br />" + newline_to_br(mass_message_data))
+									cur.execute("INSERT INTO `Private_Messages` (`To`,`From`,`Missive`,`Priority`,`timestamp`) VALUES('"+sql_validate(user)+"','"+sql_validate(username)+"','"+sql_validate(mass_message_data)+"','0','"+sql_validate(str(int(time.time())))+"')")
+								render.append("mass_message_success")
+								render.append("messages")
+							except:
+								render.append("mass_message_form")
+						else:
+							render.append("permission_denied")
+					#elif args[2] == "whatever":
+					else:
+						pass # Unknown action/args[2]
+					try:
+						cur.execute("UPDATE `sessions` SET `Chat_channel_in` = '"+sql_validate(chat_channel)+"', `Timestamp`='" + sql_validate(str(int(time.time()))) + "' WHERE `Token` = '" + sql_validate(args[1]) + "';")
+					except:
+						cur.execute("UPDATE `sessions` SET `Chat_channel_in` = NULL, `Timestamp`='" + sql_validate(str(int(time.time()))) + "' WHERE `Token` = '" + sql_validate(args[1]) + "';")
+				else:
+					render.append("error_user_does_not_exist")
+					render.append("login_page")
+
+		except:
+			render.append("invalid_session")
+else:
+	if not "login_page" in render:
+		render.append("login_page")
+chatbox_type = "polling"
+%>
+<!doctype html>
+<html>
+	<head>
+		% if "general_redirect" in render:
+			<meta http-equiv="refresh" content="0; url=${general_redirect}" />
+		% endif
+		% if "redirect_to_dashboard" in render:
+			<meta http-equiv="refresh" content="0; url=${root_dir}${base64.urlsafe_b64encode(postuser) + "/" + newsession + "/dashboard"}" />
+		% endif
+		% if "redirect_to_login" in render:
+			<meta http-equiv="refresh" content="0; url=${root_dir}login" />
+		% endif
+		% if not "chat_embedded" in render:
+			<link rel="stylesheet" href="${css}" />
+		% endif
+		% if "chat_url" in render:
+			<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.3/jquery.min.js"></script>
+			<script type="text/javascript">
+				$(document).ready(function(){
+					$("#submitmsg").click(function(){	
+						var clientmsg = $("#usermsg").val();
+						if (clientmsg.substring(0,8) == "/banlist") {
+							window.location.replace(${'"' + root_dir + args[0] + "/" + args[1] + "/chat/banlist/" + chat_channel + '"'})
+						} else if (clientmsg.substring(0,9) == "/channel ") {
+							window.location.replace(${'"' + root_dir + args[0] + "/" + args[1] + "/chat/" + '"'}.concat(clientmsg.substring(10)))
+						} else {
+							$.post(${'"' + root_dir + args[0] + "/" + args[1] + "/chat/post_message" + '"'}, {text: clientmsg, channel: ${'"' + chat_channel + '"'} });
+							$("#usermsg").attr("value", "");
+							$('#submitmsg').attr('disabled','disabled');
+							setTimeout(function(){$('#submitmsg').removeAttr("disabled")},1000);
+						}
+						return false;
+					});
+					function loadLog(){
+						var oldscrollHeight = $("#chatbox").attr("scrollHeight") - 20;
+						$.ajax({
+							url: ${'"' + root_dir + args[0] + "/" + args[1] + "/chat/embedded/" + chat_channel + '"'},
+							cache: false,
+							success: function(html){		
+								$("#chatbox").html(html); //Insert chat log into the #chatbox div				
+								var newscrollHeight = $("#chatbox").attr("scrollHeight") - 20;
+								if(newscrollHeight > oldscrollHeight){
+									$("#chatbox").animate({ scrollTop: newscrollHeight }, 'normal'); //Autoscroll to bottom of div
+								}				
+							},
+						});
+					}
+					% if chatbox_type == "polling":
+						loadLog(); // Do once at the start
+						setInterval (loadLog, 1000); //Reload file every 1 second
+					% else:
+						var Socket = new WebSocket("ws://${domain_name_no_port}:4001/chat", "pbwm-chat");
+						Socket.onopen = function() {
+							Socket.send("CHANNEL:${chat_channel}");
+							Socket.send("USERNAME:${username}");
+						};
+						Socket.onmessage = function (evt) {
+							if (evt.data == "SPECIAL:clear") {
+								$("#chatbox").html("");
+							} else if (evt.data.substring(0,15).toLowerCase() == "special:locked ") {
+								if (evt.data.substring(15) == "true") {
+									document.getElementById("locked-message").style.display = "inline"; // I would love to use jQuery here, but I think it hates me
+								} else { // $("#locked-message").style.display = "inline"; // returns an undefined error for reasons beyond my comprehension
+									document.getElementById("locked-message").style.display = "none";
+								}
+							} else if (evt.data.substring(0,15).toLowerCase() == "special:banned ") {
+								if (evt.data.substring(15) == "true") {
+									document.getElementById("banned-message").style.display = "inline"; 
+								} else {
+									document.getElementById("banned-message").style.display = "none";
+								}
+							} else if (evt.data.substring(0,15).toLowerCase() == "special:delete ") {
+								document.getElementById("message-" + evt.data.substring(15)).style.display = "none";
+							} else {
+								if ($("#chatbox").html() == "") {
+									$("#chatbox").html(evt.data);								
+								} else {
+									$("#chatbox").html($("#chatbox").html() + '<br />' + evt.data);
+								}
+							}
+						};
+						Socket.onerror = function(error) {
+							$("#chatbox").html($("#chatbox").html() + '<br /><span style="color:red;">Error connecting to the chat server: ' + error + "</span>");
+						};
+					% endif
+				});
+				function textCounter(field, cnt, maxlimit) {
+					var cntfield = document.getElementById(cnt);
+					cntfield.value = maxlimit - field.value.length;
+					if (field.value.length > maxlimit) {
+						cntfield.style.display="inline";
+					} else {
+						cntfield.style.display="none";
+					}
+				}
+				function delete_message(id) {
+					$("#usermsg").val('/delete_message '+id);
+					$("#submitmsg").click();
+				};
+				function edit_message(id) {
+					x = prompt("New message",document.getElementById("message-"+id).innerHTML.replace("${args[0]}","SPECIAL:args[0]").replace("${args[1]}","SPECIAL:args[1]"));
+					$("#usermsg").val('/update_message '+id+" "+x);
+					if (x) {
+						$("#submitmsg").click();
+					}
+				};
+				function change_channel() {
+					x = prompt("Your current channel is #${chat_channel}","#");
+					$("#usermsg").val('/channel '+x);
+					if (x) {
+						if (x.substring(0,1) != "#") {
+							$("#usermsg").val('/channel #'+x);
+						}
+						$("#submitmsg").click();
+					}
+				};
+				function change_color() {
+					x = prompt("Enter a color, or corrisponding trivaluehexadecimal color code.");
+					$("#usermsg").val('/set_color '+x);
+					if (x) {
+						$("#submitmsg").click();
+					}
+				};
+				function alert_chat() {
+					x = prompt("Enter a message to alert to the chat.");
+					$("#usermsg").val('/alert '+x);
+					if (x) {
+						$("#submitmsg").click();
+					}
+				};
+				function erase_with_message() {
+					x = prompt("Enter a message to clear the chat with.");
+					$("#usermsg").val('/erase '+x);
+					if (x) {
+						$("#submitmsg").click();
+					}
+				};
+				function erase_chat() {
+					$("#usermsg").val('/erase');
+					$("#submitmsg").click();
+				};
+				function clear_chat() {
+					$("#usermsg").val('/clear');
+					$("#submitmsg").click();
+				};
+				function banlist() {
+					$("#usermsg").val('/banlist');
+					$("#submitmsg").click();
+				};
+			</script>
+		% endif
+	</head>
+	<body>
+		% if "chat_embedded" in render:
+			<div id="chatbox-inner">
+			<%
+				if chat_is_locked == 1:
+					chat_is_locked = "Chat is currently locked"
+				else:
+					chat_is_locked = False
+				cur.execute("SELECT `Timestamp`, `Message`, `Message_ID` FROM `Chat_messages` WHERE `Channel` = '"+sql_validate(chat_channel)+"' ORDER BY `Timestamp` DESC LIMIT 15;")
+			%>
+			% for row in reversed(cur.fetchall()):
+				% if not row[1] == "SPECIAL:DO-NOT-DISPLAY":
+					% if permissions['can_erase_chat_messages'] == 1:
+						<button onClick="delete_message(${row[2]});">Delete</button>
+					% endif
+					% if permissions['can_edit_chat_messages'] == 1:
+						<button onClick="edit_message(${row[2]});">Edit</button>
+					% endif
+					<span class="chat_timestamp">${time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(row[0])))}</span> <span id="message-${row[2]}" class="chat_message">${replace_specials(row[1].replace("<p>","").replace("</p>","")) }</span>
+					<br />
+				% endif
+			% endfor
+			% if chat_is_locked:
+				<span style="color:grey;">${chat_is_locked}</span>
+			% endif
+			<%
+				cur.execute("SELECT `channel_banlist` FROM `Chat_channels` WHERE `channel_name` = '"+sql_validate(chat_channel)+"';")
+				list_of_banned_people = cur.fetchone()[0]
+			%>
+			% if "," + username + "," in list_of_banned_people:
+				% if chat_is_locked:
+					<br />
+				% endif
+				<span style="color:grey;">You are banned from speaking</span>
+			% endif
+			</div>
+			<%
+				cur.execute("SELECT `Username` FROM `sessions` WHERE `Chat_channel_in` = '"+sql_validate(chat_channel)+"';")
+			%>
+			<table class="table chat_userlist">
+				<thead>
+					<tr><td>Users active in this channel right now</td></tr>
+				</thead>
+				<tbody>
+					% for row in cur.fetchall():
+						<tr><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(row[0]) + '"'}>${row[0] | h}</a></td></tr>
+					% endfor
+				</tbody>
+			</table>
+			<% return %>
+		% endif
+		<div class="message_box">
+			% if "mass_message_success" in render:
+				<span class="success">Mass message sent</span>
+			% endif
+			% if "profile_picture_change_error" in render:
+				<span class="error">Unknown error changing your profile picture</span>
+			% endif
+			% if "chat_unknown_error" in render:
+				<span class="error">Unknown chat error</span>
+			% endif
+			% if "rename_success" in render:
+				<span class="success">Rename successfull</span>
+			% endif
+			% if "rename_error_user_exists" in render:
+				<span class="warning">Either the Old username field doesn't exist, or the New username field already exists</span>
+			% endif
+			% if "like_comment_error_already_liked" in render:
+				<span class="warning">You already like that comment</span>
+			% endif
+			% if "like_comment_success" in render:
+				<span class="success">You now like this comment</span>
+			% endif
+			% if "dislike_comment_success" in render:
+				<span class="success">You no longer like this comment</span>
+			% endif
+			% if "dislike_comment_error" in render:
+				<span class="error">Internal server error removing your like from this comment</span>
+			% endif
+			% if "like_comment_error" in render:
+				<span class="error">Internal server error adding your like to this comment</span>
+			% endif
+			% if "file_too_large" in render:
+				<span class="warning">That file is too large</span>
+			% endif
+			% if "register_user_exists" in render:
+				<span class="warning">Either an identical username or email exists</span>
+			% endif
+			% if "message_send_throttled" in render:
+				<span class="warning">You're doing that too much</span>
+			% endif
+			% if "edit_comment_unknown_error" in render:
+				<span class="error">Unknown error editing comment</span>
+			% endif
+			% if "edit_post_error_unknown_error" in render:
+				<span class="error">Unknown error editing blog post</span>
+			% endif
+			% if "recover_unknown_failure" in render:
+				<span class="error">Unknown password reset error</span>
+			% endif
+			% if "recover_request_expired" in render:
+				<span class="warning">That token has expired. Once the email has been sent, you have 24 hours to follow the link or it becomes stale, like this.</span>
+			% endif
+			% if "recover_missing_fields" in render:
+				<span class="error">You were missing form fields</span>
+			% endif
+			% if "recover_throttled" in render:
+				<span class="warning">You are doing that too much</span>
+			% endif
+			% if "recover_email_sent" in render:
+				<span class="success">An email has been sent.</span>
+			% endif
+			% if "email_validation_unknown_error" in render:
+				<span class="error">Unknown error activating your account, or that username already exists</span>
+			% endif
+			% if "email_validation_success" in render:
+				<span class="success">Email validated! Please sign in</span>
+			% endif
+			% if "error_invalid_email" in render:
+				<span class="warning">That's not a valid email address</span>
+			% endif
+			% if "delete_post_success" in render:
+				<span class="success">Deleted post successfully</span>
+			% endif
+			% if "delete_post_not_your_post" in render:
+				<span class="error">That's not your post</span>
+			% endif
+			% if "delete_post_unknown_error" in render:
+				<span class="error">An unknown error occured deleting this post</span>
+			% endif
+			% if "delete_comment_success" in render:
+				<span class="success">Deleted comment successfully</span>
+			% endif
+			% if "delete_comment_not_your_comment" in render:
+				<span class="error">That's not your comment</span>
+			% endif
+			% if "delete_comment_unknown_error" in render:
+				<span class="error">An unknown error occured deleting this comment</span>
+			% endif
+			% if "edit_comment_success" in render:
+				<span class="success">Edited comment successfully</span>
+			% endif
+			% if "edit_comment_error_not_your_comment_to_edit" in render:
+				<span class="error">That's not your comment</span>
+			% endif
+			% if "edit_comment_error_unknown_error" in render:
+				<span class="error">An unknown error occured or a duplicate comment exists</span>
+			% endif
+			% if "view_comment_error_unknown_error" in render:
+				<span class="error">Unknown error viewing this comment</span>
+			% endif
+			% if "user_does_not_exist" in render:
+				<span class="error">No such user</span>
+			% endif
+			% if "execute_comment_unknown_error" in render:
+				<span class="error">An unknown error occured posting this comment.</span>
+			% endif
+			% if "execute_comment_identical_comment" in render:
+				<span class="warning">An identical comment exists.</span>
+			% endif
+			% if "comment_posted_successfuly" in render:
+				<span class="success">Comment posted succesfully</span>
+			% endif
+			% if "error_comment_throttled" in render:
+				<span class="warning">You need to wait more before doing that</span>
+			% endif
+			% if "edit_post_success" in render:
+				<span class="success">Edited post successfuly</span>
+			% endif
+			% if "edit_post_error_general_error" in render:
+				<span class="error">Unexpected error editing this post</span>
+			% endif
+			% if "edit_post_error_not_your_post_to_edit" in render:
+				<span class="error">You don't own that post</span>
+			% endif
+			% if "unlike_post_success" in render:
+				<span class="success">Unliked post successfuly</span>
+			% endif
+			% if "unlike_post_error" in render:
+				<span class="error">Unexpected error unliking this post</span>
+			% endif
+			% if "like_post_success" in render:
+				<span class="success">Liked successfuly</span>
+			% endif
+			% if "like_post_error" in render:
+				<span class="error">Unexpected error liking this post</span>
+			% endif
+			% if "like_post_error_already_liked" in render:
+				<span class="warning">You already like this post</span>
+			% endif
+			% if "view_post_error_no_such_post" in render:
+				<span class="error">No such post</span>
+			% endif
+			% if "posted_successfuly" in render:
+				<span class="success">Posted successfully</span>
+			% endif
+			% if "execute_post_bad_privacy_settings" in render:
+				<span class="error">Bad privacy settings</span>
+			% endif
+			% if "execute_post_unknown_error" in render:
+				<span class="error">Unknown posting error</span>
+			% endif
+			% if "unfollow_error_no_user_specified" in render:
+				<span class="error">No user was specified to unfollow</span>
+			% endif
+			% if "unfollow_success" in render:
+				<span class="success">You no longer follow ${to_unfollow}</span>
+			% endif
+			% if "follow_error_already_following" in render:
+				<span class="warning">You already follow ${to_follow}</span>
+			% endif
+			% if "follow_error_no_user_specified" in render:
+				<span class="error">Either you failed to specify a user or that user doesn't exist</span>
+			% endif
+			% if "follow_successful" in render:
+				<span class="success">You now follow ${to_follow}</span>
+			% endif
+			% if "follow_error_user_does_not_exist" in render:
+				<span class="error">No such user</span>
+			% endif
+			% if "messages_delete_success" in render:
+				<span class="success">Message deleted</span>
+			% endif
+			% if "messages_delete_error" in render:
+				<span class="error">Error deleting missive</span>
+			% endif
+			% if "messages_send_post_success" in render:
+				<span class="success">Message has been sent</span>
+			% endif
+			% if "messages_send_post_missing_values" in render:
+				<span class="warning">Some values were missing from your request</span>
+			% endif
+			% if "messages_send_post_user_does_not_exist" in render:
+				<span class="error">That user doesn't exist</span>
+			% endif
+			% if "error_messages_unknown_error" in render:
+				<span class="error">Unknown mail error</span>
+			% endif
+			% if "error_messages_unknown_action" in render:
+				<span class="error">Unknown mail manipulation token</span>
+			% endif
+			% if "delete_other_account_no_such_user" in render:
+				<span class="error">That user does not exist</span>
+			% endif
+			% if "profile_change_success" in render:
+				<span class="success">Profile changed successful</span>
+			% endif
+			% if "error_profile_change_error" in render:
+				<span class="error">Profile changed failed with unknown reason</span>
+			% endif
+			% if "email_change_wrong_old_email" in render:
+				<span class="warning">Old email is incorrect</span>
+			% endif
+			% if "email_change_failure" in render:
+				<span class="error">Email change failed with unspecified reason</span>
+			% endif
+			% if "email_change_successful" in render:
+				<span class="success">Email changed successful</span>
+			% endif
+			% if "search_no_results" in render:
+				<span class="warning">No results for ${search_string}</span>
+			% endif
+			% if "error_search_error" in render:
+				<span class="error">Unspecified error searching for ${search_string}</span>
+			% endif
+			% if "error_profile_error" in render:
+				<span class="error">Unspecified error retrieving user profile</span>
+			% endif
+			% if "error_user_does_not_exist" in render:
+				<span class="error">User does not exist</span>
+			% endif
+			% if "register_missing_form_fields" in render:
+				<span class="error">Form fields missing</span>
+			% endif
+			% if "login_form_fields_missing" in render:
+				<!--<span class="error">Form fields missing</span>-->
+			% endif
+			% if "password_change_general_error" in render:
+				<span class="error">Unspecified password change error</span>
+			% endif
+			% if "password_change_passwords_do_not_match" in render:
+				<span class="warning">Passwords do not match</span>
+			% endif
+			% if "password_change_old_password_incorrect" in render:
+				<span class="warning">Your old password was incorrect</span>
+			% endif
+			% if "password_change_successful" in render:
+				<span class="success">Password successfuly changed</span>
+			% endif
+			% if "register_token_error" in render:
+				<span class="error">Unspecified registration token error or user exists</span>
+			% endif
+			% if "register_comma_error" in render:
+				<span class="warning">Illegal comma in username</span>
+			% endif
+			% if "register_success" in render:
+				<span class="success">Registration was successful</span>
+			% endif
+			% if "invalid_username" in render:
+				<span class="error">Invalid username</span>
+			% endif
+			% if "invalid_password" in render:
+				<span class="error">Invalid password. <a href=${'"' + root_dir + "recover" + '"'}>Reset</a></span>
+			% endif
+			% if "invalid_session" in render:
+				<span class="error">Invalid session or token expired</span>
+			% endif
+			% if "css_update_error" in render:
+				<span class="error">Modification of CSS settings failed for an unknown reason</span>
+			% endif
+			% if "css_update_successful" in render:
+				<span class="success">Css settings change was successful</span>
+			% endif
+			% if "user_deletion_successful" in render:
+				<span class="success">User deletion of ${d['delete_other_account_account']} was successful</span>
+			% endif
+			% if "user_deletion_unknown_status" in render:
+				<span class="error">User deletion returned with an unknown status. Please verify of the deletion went through</span>
+			% endif
+			% if "permission_denied" in render:
+				<span class="warning">Permission denied</span>
+			% endif
+		</div>
+
+		% if not "login_successful" in render and not "login_page" in render:
+			<div class="sidebar">
+				<ul>
+					<li><a href="${root_dir}login">Login</a></li>
+					<li><a href="${root_dir}register">Register</a></li>
+					<li><a href="${root_dir}recover">Reset password</a></li>
+				</ul>
+			</div>
+		% endif
+		% if "login_successful" in render:
+			<div class="sidebar">
+
+				<p>Signed in as <a href="${root_dir + args[0] + "/" + args[1]}/profile/${base64.urlsafe_b64encode(username)}">${username}</a></p>
+					<div class="navigation">
+					<ul>
+						<li><a href="${root_dir}${args[0]+"/"+args[1]}/dashboard">Dashboard</a></li>
+						<li><a href="${root_dir}${args[0]+"/"+args[1]}/new_post">New post</a></li>
+						<li><a href="${root_dir}${args[0]+"/"+args[1]}/search">Look for users</a></li>
+						<li><a href="${root_dir}${args[0]+"/"+args[1]}/search_for_posts">Search posts</a></li>
+						<li><a href="${root_dir}${args[0]+"/"+args[1]}/hashtag_search">Search posts by hashtag</a></li>
+						<li><a href="${root_dir}${args[0]+"/"+args[1]}/messages">Messages</a></li>
+						<li><a href="${root_dir}${args[0]+"/"+args[1]}/chat">Chat</a></li>
+						<li><a href="${root_dir}${args[0]+"/"+args[1]}/settings">Settings</a></li>
+						<li><a href="${root_dir}${args[0]+"/"+args[1]}/logout">Log out</a></li>
+						% if "administrative_panel" in render:
+							</ul>
+							<hr style="width:10%;" />
+							<ul>
+							<li><a href="${root_dir}${args[0]+"/"+args[1]}/delete_other_account">Delete or rename an account</a></li>
+							<li><a href="${root_dir}${args[0]+"/"+args[1]}/mass_message">Send a message to everyone</a></li>
+							<li><a href="${root_dir}${args[0]+"/"+args[1]}/reports">Generate reports</a></li>
+							<li><a href="${root_dir}${args[0]+"/"+args[1]}/impersonate">Switch user</a></li>
+						% endif
+					</ul>
+					<hr style="width:10%;" />
+					<br />
+					<div class="newsfeed">
+						<%
+							total_list = currently_following
+						%>
+						% for person_user_follows in currently_following.split(","):
+							<%
+								cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(person_user_follows) + "';")
+							%>
+							% for row in cur.fetchall():
+								<%
+									total_list += row[0]
+								%>
+							% endfor
+						% endfor
+						<%
+							total_list = list(set(total_list.split(",")))
+							query = "SELECT `Post_ID`,`Poster`, `Time_Of_Posting`, `Post_Contents`, `privacy_settings` FROM `Posts` WHERE "
+							for user in total_list:
+								if user and not user == username:
+									query += "`Poster` = '" + sql_validate(user) + "' OR "
+							query = query[0:-3]
+							query += "ORDER BY `Time_Of_Posting` DESC LIMIT 10;"
+							if total_list == ['']:
+								rows = [[0,"",0,"",0]]
+							else:
+								cur.execute(query)
+								rows = cur.fetchall()
+						%>
+						% for row in rows:
+							<%
+								render_post = False
+								if username == row[1]:
+									render_post = True
+								elif int(row[4]) == 3:
+									render_post = True
+								elif int(row[4]) == 1:
+									cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(row[1])+"';")
+									for subrow in cur:
+										if "," + username + "," in subrow[0]:
+											render_post = True
+							%>
+							% if render_post:
+								<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(row[1]) + '"'}>${row[1]}</a>
+								at ${time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(row[2])))}
+								<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/view_post/" + base64.urlsafe_b64encode(str(row[0])) + '"'}>View post</a>
+								<p class="newsfeed_post">
+									${replace_specials(newline_to_br(shorten_to_reasonable_length(row[3],100)))}
+								</p>
+							% endif
+						% endfor
+					</div>
+				</div>
+			</div>
+		% endif
+		% if "mass_message_form" in render:
+			<h2>Send a mass message</h2>
+		% endif
+		% if "list_of_online_users" in render:
+			<h2>List of online users</h2>
+		% endif
+		% if "api_documentation" in render:
+			<h2>API</h2>
+		% endif
+		% if "chat_banlist" in render:
+			<h2>Banlist for ${chat_channel | h}</h2>
+		% endif
+		% if "chat_url" in render:
+			<h2>Chat</h2>
+		% endif
+		% if "recover_success" in render:
+			<h2>Reset password successful</h2>
+		% endif
+		% if "recover_form" in render:
+			<h2>Reset password</h2>
+		% endif
+		% if "edit_comment_form" in render:
+			<h2>Edit comment</h2>
+		% endif
+		% if "view_comment_page" in render:
+			<h2>View full comment</h2>
+		% endif
+		% if "edit_post_form" in render:
+			<h2>Edit post</h2>
+		% endif
+		% if "blog_search_form" in render:
+			<h2>Search for posts</h2>
+		% endif
+		% if "hashtag_search_form" in render or "hashtag_search_results" in render:
+			<h2>Search for a hashtag</h2>
+		% endif
+		% if "new_post_form" in render:
+			<h2>Make a new post</h2>
+		% endif
+		% if "view_sent" in render:
+			<h2>Sent messages</h2>
+		% endif
+		% if "send_form" in render:
+			<h2>Send a message</h2>
+		% endif
+		% if "messages" in render:
+			<h2>Messages</h2>
+		% endif
+		% if "delete_user_form" in render:
+			<h2>Delete a user account</h2>
+		% endif
+		% if "search_results" in render or "search_form" in render:
+			<h2>Search</h2>
+		% endif
+		% if "profile_page" in render and not "who_does_x_follow_page" in render:
+			<h2>User profile</h2>
+		% elif "who_does_x_follow_page" in render:
+			<h2>Who follows the profile ${profile_user}</h2>
+		% endif
+		% if "settings" in render:
+			<h2>Settings</h2>
+		% endif
+		% if "dashboard" in render:
+			<h2>Dashboard</h2>
+		% endif
+		% if "login_page" in render:
+			<h2>Log in here</h2>
+		% endif
+		% if "register_page" in render:
+			<h2>Register</h2>
+		% endif
+		% if "reports" in render:
+			<h2>Reports</h2>
+		% endif
+		% if "report_successful" in render:
+			<h2>Report for ${report_table}</h2>
+		% endif
+		% if "delete_account" in render:
+			<h2>Warning</h2>
+		% endif
+		% if "impersonate_form" in render:
+			<h2>Switch accounts</h2>
+		% endif
+		% if "view_post" in render or "view_post_not_logged_in" in render:
+			<h2>View post</h2>
+		% endif
+
+
+		<div id="content">
+			% if "mass_message_form" in render:
+				<h3>Send a mass message</h3>
+				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/mass_message/" method="post">
+					<textarea rows="6" cols="80" name="mass_message_data"></textarea><br />
+					<input type="submit" value="Submit">
+				</form>
+			% endif
+			% if "api_documentation" in render:
+				<h3>API documentation</h3>
+				Simply send a POST request to ${fully_qualified_domain_name+root_dir} with the variables postuser and postpass. The last line of the response text is "&lt;!--" followed by your session ID, then a "--&gt;". <br /><br />Session IDs are valid for three minutes after each request. If you request a new session ID, or query the "logout" page, your session will be destroyed.<br /><br />Requests are sent using GET. For example, if my sesion ID is "session-id", and my username is "username", a request to like a blog post with the ID of 1 would look be a GET request to the url <pre>${root_dir}dXNlcm5hbWU=/session-id/like_post/MQ==</pre>All base64 data used is encoded (and should be decoded) with the urlsafe base64 variant.
+			% endif
+			% if "list_of_online_users" in render:
+				<h3>List of online users</h3>
+				<%
+					cur.execute("SELECT `Username` FROM `Sessions`")
+					users = []
+					for row in cur.fetchall():
+						users += row
+				%>
+				% if users == []:
+					<h4>No users online in the last 7 minutes</h4>
+				% else:
+					<table class="table">
+						<thead>
+							<tr><td></td><td>Username</td></tr>
+						</thead>
+						<tbody>
+							% for user in users:
+								<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td>${user}</td></tr>
+							% endfor
+						</tbody>
+					</table>
+				% endif
+			% endif
+			% if "private_policy" in render:
+				Terms and Conditions <br />In using this website you are deemed to have read and agreed to the following terms and conditions:<br />The following terminology applies to these Terms and Conditions, Privacy Statement and Disclaimer Notice and any or all Agreements: "Client", "You" and "Your" refers to you, the person accessing this website and accepting the Companys terms and conditions. "The Company", "Ourselves", "We" and "Us", refers to our Company. "Party", "Parties", or "Us", refers to both the Client and ourselves, or either the Client or ourselves. All terms refer to the offer, acceptance and consideration of payment necessary to undertake the process of our assistance to the Client in the most appropriate manner, whether by formal meetings of a fixed duration, or any other means, for the express purpose of meeting the Clients needs in respect of provision of the Companys stated services/products, in accordance with and subject to, prevailing English Law. Any use of the above terminology or other words in the singular, plural, capitalisation and/or he/she or they, are taken as interchangeable and therefore as referring to same.<br />Privacy Statement<br />We are committed to protecting your privacy. Authorized employees within the company on a need to know basis only use any information collected from individual customers. We constantly review our systems and data to ensure the best possible service to our customers. Parliament has created specific offences for unauthorised actions against computer systems and data. We will investigate any such actions with a view to prosecuting and/or taking civil proceedings to recover damages against those responsible<br /><br />Confidentiality<br />We are registered under the Data Protection Act 1998 and as such, any information concerning the Client and their respective Client Records may be passed to third parties. However, Client records are regarded as confidential and therefore will not be divulged to any third party, other than [our manufacturer/supplier(s) and] if legally required to do so to the appropriate authorities. Clients have the right to request sight of, and copies of any and all Client Records we keep, on the proviso that we are given reasonable notice of such a request. Clients are requested to retain copies of any literature issued in relation to the provision of our services. Where appropriate, we shall issue Clients with appropriate written information, handouts or copies of records as part of an agreed contract, for the benefit of both parties.<br />We will not sell, share, or rent your personal information to any third party or use your e-mail address for unsolicited mail. Any emails sent by this Company will only be in connection with the provision of agreed services and products.<br /><h4>Disclaimer</h4>Exclusions and Limitations <br />The information on this web site is provided on an "as is" basis. To the fullest extent permitted by law, this Company:<br /> excludes all representations and warranties relating to this website and its contents or which is or may be provided by any affiliates or any other third party, including in relation to any inaccuracies or omissions in this website and/or the Companys literature; and <br /> excludes all liability for damages arising out of or in connection with your use of this website. This includes, without limitation, direct loss, loss of business or profits (whether or not the loss of such profits was foreseeable, arose in the normal course of things or you have advised this Company of the possibility of such potential loss), damage caused to your computer, computer software, systems and programs and the data thereon or any other direct or indirect, consequential and incidental damages. <br />This Company does not however exclude liability for death or personal injury caused by its negligence. The above exclusions and limitations apply only to the extent permitted by law. None of your statutory rights as a consumer are affected. <br /><h4>Payment</h4>Cash or Personal Cheque with Bankers Card, all major Credit/Debit Cards, Bankers Draft or BACS Transfer are all acceptable methods of payment. Our Terms are payment in full within thirty days. All goods remain the property of the Company until paid for in full. Monies that remains outstanding by the due date will incur late payment interest at the rate of 2% above the prevailing Bank of England's base rate on the outstanding balance until such time as the balance is paid in full and final settlement. We reserve the right to seek recovery of any monies remaining unpaid sixty days from the date of invoice via collection Agencies and/or through the Small Claims Court in the event that the outstanding balance does not exceed 3000. In such circumstances, you shall be liable for any and all additional administrative and/or court costs. <br />Returned cheques will incur a 25 charge to cover banking fees and administrative costs. In an instance of a second Returned cheque, we reserve the right to terminate the arrangement and, if agreed to, we shall insist on future cash transactions only. Consequently, all bookings and/or transactions and agreements entered into will cease with immediate effect until such time as any and all outstanding monies are recovered in full. <br />Cancellation Policy<br />Minimum 24 hours notice of cancellation required. Notification for instance, in person, via email, mobile phone text message and/or fax, or any other means will be accepted subject to confirmation in writing. We reserve the right to levy a 30 charge to cover any subsequent administrative expenses.<br />Termination of Agreements and Refunds Policy<br />Both the Client and ourselves have the right to terminate any Services Agreement for any reason, including the ending of services that are already underway. No refunds shall be offered, where a Service is deemed to have begun and is, for all intents and purposes, underway. Any monies that have been paid to us which constitute payment in respect of the provision of unused Services, shall be refunded.<br />Availability <br />Unless otherwise stated, the services featured on this website are only available within the United Kingdom, or in relation to postings from the United Kingdom. All advertising is intended solely for the United Kingdom market. You are solely responsible for evaluating the fitness for a particular purpose of any downloads, programs and text available through this site. Redistribution or republication of any part of this site or its content is prohibited, including such by framing or other similar or any other means, without the express written consent of the Company. The Company does not warrant that the service from this site will be uninterrupted, timely or error free, although it is provided to the best ability. By using this service you thereby indemnify this Company, its employees, agents and affiliates against any loss or damage, in whatever manner, howsoever caused.<br />Log Files<br />We use IP addresses to analyse trends, administer the site, track users movement, and gather broad demographic information for aggregate use. IP addresses are not linked to personally identifiable information. Additionally, for systems administration, detecting usage patterns and troubleshooting purposes, our web servers automatically log standard access information including browser type, access times/open mail, URL requested, and referral URL. This information is not shared with third parties and is used only within this Company on a need-to-know basis. Any individually identifiable information related to this data will never be used in any way different to that stated above without your explicit permission.<br />Cookies<br />Like most interactive web sites this Companys website [or ISP] uses cookies to enable us to retrieve user details for each visit. Cookies are used in some areas of our site to enable the functionality of this area and ease of use for those people visiting. Some of our affiliate partners may also use cookies.<br />Links to this website <br />You may not create a link to any page of this website without our prior written consent. If you do create a link to a page of this website you do so at your own risk and the exclusions and limitations set out above will apply to your use of this website by linking to it.<br />Links from this website <br />We do not monitor or review the content of other partys websites which are linked to from this website. Opinions expressed or material appearing on such websites are not necessarily shared or endorsed by us and should not be regarded as the publisher of such opinions or material. Please be aware that we are not responsible for the privacy practices, or content, of these sites. We encourage our users to be aware when they leave our site &amp; to read the privacy statements of these sites. You should evaluate the security and trustworthiness of any other site connected to this site or accessed through this site yourself, before disclosing any personal information to them. This Company will not accept any responsibility for any loss or damage in whatever manner, howsoever caused, resulting from your disclosure to third parties of personal information.<br />Copyright Notice <br />Copyright and other relevant intellectual property rights exists on all text relating to the Companys services and the full content of this website. <br />Communication<br />We have several different e-mail addresses for different queries. These, &amp; other contact information, can be found on our Contact Us link on our website or via Company literature or via the Companys stated telephone, facsimile or mobile telephone numbers.<br /><h2>Force Majeure</h2>Neither party shall be liable to the other for any failure to perform any obligation under any Agreement which is due to an event beyond the control of such party including but not limited to any Act of God, terrorism, war, Political insurgence, insurrection, riot, civil unrest, act of civil or military authority, uprising, earthquake, flood or any other natural or man made eventuality outside of our control, which causes the termination of an agreement or contract entered into, nor which could have been reasonably foreseen. Any Party affected by such event shall forthwith inform the other Party of the same and shall use all reasonable endeavours to comply with the terms and conditions of any Agreement contained herein.<br />Waiver<br />Failure of either Party to insist upon strict performance of any provision of this or any Agreement or the failure of either Party to exercise any right or remedy to which it, he or they are entitled hereunder shall not constitute a waiver thereof and shall not cause a diminution of the obligations under this or any Agreement. No waiver of any of the provisions of this or any Agreement shall be effective unless it is expressly stated to be such and signed by both Parties.<br /><h3>General</h3>The laws of England and Wales govern these terms and conditions. By accessing this website [and using our services/buying our products] you consent to these terms and conditions and to the exclusive jurisdiction of the English courts in all disputes arising out of such access. If any of these terms are deemed invalid or unenforceable for any reason (including, but not limited to the exclusions and limitations set out above), then the invalid or unenforceable provision will be severed from these terms and the remaining terms will continue to apply. Failure of the Company to enforce any of the provisions set out in these Terms and Conditions and any Agreement, or failure to exercise any option to terminate, shall not be construed as waiver of such provisions and shall not affect the validity of these Terms and Conditions or of any Agreement or any part thereof, or the right thereafter to enforce each and every provision. These Terms and Conditions shall not be amended, modified, varied or supplemented except in writing and signed by duly authorised representatives of the Company.<br />Notification of Changes<br />The Company reserves the right to change these conditions from time to time as it sees fit and your continued use of the site will signify your acceptance of any adjustment to these terms. If there are any changes to our privacy policy, we will announce that these changes have been made on our home page and on other key pages on our site. If there are any changes in how we use our site customers Personally Identifiable Information, notification by e-mail or postal mail will be made to those affected by this change. Any changes to our privacy policy will be posted on our web site 30 days prior to these changes taking place. You are therefore advised to re-read this statement on a regular basis<br />These terms and conditions form part of the Agreement between the Client and ourselves. Your accessing of this website and/or undertaking of a booking or Agreement indicates your understanding, agreement to and acceptance, of the Disclaimer Notice and the full Terms and Conditions contained herein. Your statutory Consumer Rights are unaffected. <br />&#169; PyBlogWithMe 2014 All Rights Reserved<br />
+			% endif
+			% if "chat_banlist" in render:
+				<table class="table">
+					<thead>
+						<tr><td></td><td>Chat banlist for ${chat_channel | h}</td></tr>
+					</thead>
+					<tbody>
+						<% cur.execute("SELECT `channel_banlist` FROM `Chat_channels` WHERE `channel_name` = '"+sql_validate(chat_channel)+"';") %>
+						% for user in cur.fetchone()[0].split(","):
+							% if user:
+								<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(user) + '"'}>${user}</a></tr></td>
+							% endif
+						% endfor
+					</tbody>
+				</table>
+			% endif
+			% if "chat_url" in render:
+				<h3>Welcome to ${"#" + chat_channel | h}</h3>
+				<span style="font-weight:bold;font-size:1.2em;">Actions</span> <button onclick="change_channel()">Change channel</button> <button onclick="banlist()">Banlist</button>
+				<br />
+				% if permissions['can_view_chat_admin_panel'] == 1:
+					<span style="font-weight:bold;font-size:1.2em;">Admin actions</span> <button onclick="change_color()">Change color</button> <button onclick="alert_chat()">Alert</button> <button onclick="erase_with_message()">Erase (message)</button> <button onclick="erase_chat()">Erase (silent)</button> <button onclick="clear_chat()">Clear</button>
+					<br />
+				% endif
+				<div id="chatbox">Connecting...</div>
+				<span style="color:grey;display:none;" id="locked-message">Chat's locked yo</span>
+				<span style="color:grey;display:none;" id="banned-message">You're banned from speaking broham</span>
+				<form name="message" action="">
+					<input style="background-color:gold;display:none;" readonly="readonly" type="text" id='chat_input_character_counter' name="fajdskl" size="3" maxlength="3" value="400" />
+					<input name="usermsg" type="text" id="usermsg" onKeyUp="textCounter(this,'chat_input_character_counter' ,400)" size="63" />
+					<input name="submitmsg" type="submit"  id="submitmsg" value="Send" />
+				</form>
+			% endif
+			% if "recover_success" in render:
+				<h3>Your password has been reset</h3>
+				Your new password is below
+				<p id="newpass">${newpass | h}</p>
+			% endif
+			% if "recover_form" in render:
+				<h3>Enter your username or email address</h3>
+				<form name="input" action="${root_dir}recover_step_two" method="post">
+					<input type="text" name="username_or_email"><br />
+					<input type="submit" value="Submit">
+				</form>
+			% endif
+			% if "back_to_dashboard_link" in render:
+				<h3><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/dashboard" + '"'}>Back to dashboard</a></h3>
+			% endif
+			% if "view_comment_page" in render:
+				<h3>Full comment</h3>
+				<%
+					try:
+						cur.execute("SELECT `Comment_data`, `Poster`, `Likes_this` FROM `Comments` WHERE `Post_id` = '" + sql_validate(view_comment_comment_id) + "';")
+						row = cur.fetchone()
+					except:
+						row = ["Comment does not exist",'',',']
+					likes_this_comment_array = row[2].split(",")
+				%>
+				% if len(likes_this_comment_array)-2 == 1:
+					<a onClick="var elem=document.getElementById('likes_this');var hide=elem.style.display=='none';if(hide){elem.style.display='table'}else{elem.style.display='none'}"}>1 person likes this</a>
+				% else:
+					<a onClick="var elem=document.getElementById('likes_this');var hide=elem.style.display=='none';if(hide){elem.style.display='table'}else{elem.style.display='none'}"}>${str(len(likes_this_comment_array)-2)} people like this</a>
+				% endif
+				<br />
+				<table id="likes_this" class="table" style="display:none;">
+				<noscript>
+					</table>
+					<table id="likes_this" class="table">
+				</noscript>
+					<thead>
+						<tr><td></td><td>Users who publicly like this comment</td></tr>
+					</thead>
+					<tbody>
+						% for user in likes_this_comment_array:
+							% if user:
+								<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(user) + '"'}>${user}</a></td></tr>
+							% endif
+						% endfor
+					</tbody>
+				</table>
+				% if ","+sql_validate(username)+"," in row[2]:
+					<a href=${'"'+root_dir+args[0]+"/"+args[1]+"/dislike_comment/"+base64.urlsafe_b64encode(view_comment_comment_id)+'"'}>Unlike this comment</a>
+				% else:
+					<a href=${'"'+root_dir+args[0]+"/"+args[1]+"/like_comment/"+base64.urlsafe_b64encode(view_comment_comment_id)+'"'}>Like this comment</a>
+				% endif
+				<p>${newline_to_br(row[0])}</p>
+				<a onClick="window.history.back()">Back</a>
+				<br />
+				% if username == row[1]:
+					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/edit_comment/" + base64.urlsafe_b64encode(str(view_comment_comment_id)) + '"'}>Edit comment</a><br />
+					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/delete_comment/" + base64.urlsafe_b64encode(str(view_comment_comment_id)) + '"'}>Delete comment</a><br />
+				% endif
+			% endif
+			% if "edit_comment_form" in render:
+				<h3>Edit a comment</h3>
+				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/execute_edit_comment/${args[3]}" method="post">
+					<%
+						cur.execute("SELECT `Comment_data` FROM `Comments` WHERE `Poster` = '" + sql_validate(username) + "' AND `Post_ID` = '" + sql_validate(str(edit_comment_comment_id)) + "';")
+					%>
+					% for row in cur.fetchall():
+						<textarea rows="6" cols="80" name="edit_comment_new_contents">${row[0]}</textarea>
+						<br />
+						<%
+							break # This is for formatting. If I indent it here, the extra tabs show up. If you were to edit the same post multiple times, it would add more and more tabs.
+						%>
+					% endfor
+					<input type="submit" value="Submit">
+				</form>
+			% endif
+			% if "edit_post_form" in render:
+				<h3>Edit a post</h3>
+				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/execute_edit_post/${args[3]}" method="post">
+					Privacy settings: <select name="edit_post_new_privacy_settings">
+						<option value="0">Hidden from timeline</option>
+						<option value="1">People I follow</option>
+						<option value="2">Everyone with the permalink</option>
+						<option value="3" selected="selected">Publicly on my profile</option>
+					</select><br />
+					<%
+						cur.execute("SELECT `Post_Contents` FROM `Posts` WHERE `Poster` = '" + sql_validate(username) + "' AND `Post_ID` = '" + sql_validate(str(post_to_edit)) + "';")
+					%>
+					% for row in cur.fetchall():
+						<textarea rows="6" cols="80" name="edit_post_new_contents">${row[0]}</textarea>
+						<br />
+						<%
+							break # This is for formatting. If I indent it here, the extra tabs show up. If you were to edit the same post multiple times, it would add more and more tabs.
+						%>
+					% endfor
+					<input type="submit" value="Submit">
+				</form>
+			% endif
+			% if "blog_search_form" in render:
+				<h3>Search for posts</h3>
+				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/search_for_posts" method="post">
+					<input type="text" name="search_string"><br />
+					<input type="submit" value="Submit">
+				</form>
+
+			% endif
+			% if "blog_search_results" in render:
+				<h3>Results for ${string_to_search_for}</h3>
+				<%
+					cur.execute("SELECT `Post_ID`,`Poster`, `Time_Of_Posting`, `Post_Contents`, `privacy_settings` FROM `Posts` WHERE `Post_Contents` LIKE '%" + sql_validate(string_to_search_for) + "%' ORDER BY `Time_Of_Posting` DESC;")
+				%>
+				% for row in cur.fetchall():
+					<%
+						render_post = False
+						if username == row[1]:
+							render_post = True
+						elif int(row[4]) == 3:
+							render_post = True
+						elif int(row[4]) == 1:
+							cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(row[1])+"';")
+							for subrow in cur:
+								if "," + username + "," in subrow[0]:
+									render_post = True
+					%>
+					% if render_post:
+						${render_post_function(row[0],row[1],row[2],row[3],row[4])}
+					% endif
+					<br />
+				% endfor
+			% endif
+			% if "view_post_not_logged_in" in render:
+				<%
+					cur.execute("SELECT `Post_ID`,`Poster`, `Time_Of_Posting`, `Post_Contents`, `privacy_settings` FROM `Posts` WHERE `Post_ID` = '"+sql_validate(view_post_post_id)+"';")
+					render_post = False
+					for row in cur.fetchall():
+						if int(row[4]) == 3 or int(row[4]) == 2:
+							render_post = True
+						break
+				%>
+				% if render_post:
+					${render_post_function(row[0],row[1],row[2],row[3],row[4])}
+				% endif
+			% endif
+			% if "view_post" in render:
+				<%
+					cur.execute("SELECT `Post_ID`,`Poster`, `Time_Of_Posting`, `Post_Contents`, `privacy_settings` FROM `Posts` WHERE `Post_ID` = '"+sql_validate(view_post_post_id)+"';")
+				%>
+				% for row in cur.fetchall():
+
+					<%
+						render_post = False
+						if username == row[1]:
+							render_post = True
+						elif int(row[4]) == 3:
+							render_post = True
+						elif int(row[4]) == 1:
+							cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(row[1])+"';")
+							for subrow in cur.fetchall():
+								if "," + username + "," in subrow[0]:
+									render_post = True
+					%>
+					% if render_post:
+						${render_post_function(row[0],row[1],row[2],row[3],row[4],True)}
+						% if "view_comments" in render:
+							<%
+								cur.execute("SELECT `Post_ID`, `Poster`, `Post_time`, `Comment_data`, `Likes_this` FROM `Comments` WHERE `Parent_post_id` = '" + sql_validate(str(row[0])) + "' ORDER BY `Post_time` DESC;")
+							%>
+							<h3>Comments</h3>
+							% for subrow in cur.fetchall():
+								Posted by: <span class="post_poster"><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(str(subrow[1])) + '"'}>${subrow[1]}</a></span><br />
+								Posted at: <span class="post_time">${time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(subrow[2])))}</span><br />
+								% if username == subrow[1]:
+									<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/edit_comment/" + base64.urlsafe_b64encode(str(subrow[0])) + '"'}>Edit comment</a><br />
+									<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/delete_comment/" + base64.urlsafe_b64encode(str(subrow[0])) + '"'}>Delete comment</a><br />
+								% endif
+								<%
+									likes_this_comment_array = subrow[4].split(",")
+									for x in xrange(2):
+										likes_this_comment_array.remove("")
+									num_people_like_this_comment = len(likes_this_comment_array)
+								%>
+								% if num_people_like_this_comment == 1:
+									<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/view_comment/" + base64.urlsafe_b64encode(str(subrow[0])) + '"'}>1 person likes this comment</a><br />
+								% else:
+									<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/view_comment/" + base64.urlsafe_b64encode(str(subrow[0])) + '"'}>${num_people_like_this_comment} people like this comment</a><br />
+								% endif
+								<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/view_comment/" + base64.urlsafe_b64encode(str(subrow[0])) + '"'}>View full comment</a><br />
+								<p class="comment">${newline_to_br(shorten_to_reasonable_length(subrow[3],400))}</p> <!-- No newlines allowed in comments -->
+								<br />
+								<hr />
+							% endfor
+							<h3>Submit a comment</h3>
+							<form name="input" action="${root_dir + args[0]+"/"+args[1]}/new_comment_post/${base64.urlsafe_b64encode(view_post_post_id)}" method="post">
+								<textarea rows="6" cols="80" name="new_comment_comment_data">Enter your new comment here</textarea><br />
+								<input type="submit" value="Submit">
+							</form>
+						% endif
+					% endif
+
+				% endfor
+			% endif
+			% if "hashtag_search_form" in render:
+				<h3>Search for a hashtag</h3>
+				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/hashtag_search" method="post">
+					#<input type="text" name="hashtag_to_search"><br />
+					<input type="submit" value="Submit">
+				</form>
+			% endif
+			% if "hashtag_search_results" in render:
+				<h3>Search results</h3>
+				<%
+					cur.execute("SELECT `Post_ID`,`Poster`, `Time_Of_Posting`, `Post_Contents`, `privacy_settings` FROM `Posts` WHERE `Post_Contents` LIKE '%#"+sql_validate(search_query)+"%' ORDER BY `Time_Of_Posting` DESC;")
+				%>
+				% for row in cur.fetchall():
+					<%
+						render_post = False
+						if username == row[1]:
+							render_post = True
+						elif int(row[4]) == 3:
+							render_post = True
+						elif int(row[4]) == 1:
+							cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(row[1])+"';")
+							for subrow in cur:
+								if "," + username + "," in subrow[0]:
+									render_post = True
+								break
+					%>
+					% if render_post:
+						${render_post_function(row[0],row[1],row[2],row[3],row[4])}
+						<br />
+					% endif
+				% endfor
+			% endif
+			% if "new_post_form" in render:
+				<h3>Make a new post</h3>
+				<button onClick="window.open('http://imgur.com', '_blank')">Upload a picture</button>
+				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/execute_new_post" method="post">
+					Privacy settings: <select name="execute_post_permissions">
+						<option value="0">Hidden from timeline</option>
+						<option value="1">People I follow</option>
+						<option value="2">Everyone with the permalink</option>
+						<option value="3" selected="selected">Publicly on my profile</option>
+					</select><br />
+					<textarea rows="6" cols="80" name="execute_post_post_data">Enter your new blog post here</textarea><br />
+					<input type="submit" value="Submit">
+				</form>
+			% endif
+			% if "send_form" in render:
+				<h3>Send a message</h3>
+				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/messages/send_post" method="post">
+					To: <input type="text" name="send_post_to" value=${'"' + messages_send_form_user_to_address_to + '"'} />
+					<select name="send_post_priority">
+						<option value="0">None</option>
+						<option value="1">Low</option>
+						<option value="2">Medium</option>
+						<option value="3">High</option>
+						% if permissions["can_send_messages_with_increased_priority"] == 1:
+							<option value="20">admin</option>
+						% endif
+					</select>
+					<br />
+					<textarea rows="6" cols="80" name="send_post_missive"></textarea><br />
+					<input type="submit" value="Submit">
+				</form>
+			% endif
+			% if "view_full_message" in render:
+				<h3>Message</h3>
+				From <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(view_full_message_from) + '"'}>${view_full_message_from}</a>:<br />
+				${newline_to_br(view_full_message_string)}
+				<hr />
+			% endif
+			% if "search_form" in render or "search_results" in render:
+				<h3>Search for users</h3>
+				<form name="input" action="${root_dir}${args[0]+"/"+args[1]}/search" method="post">
+					<input type="text" name="post_search_string"><br />
+					<input type="submit" value="Submit">
+				</form>
+			% endif
+			% if "search_results" in render:
+				% if len(search_results) != 1:
+					<h3>Found ${len(search_results)} results</h3>
+				% else:
+					<h3>Found ${len(search_results)} result</h3>
+				% endif
+				<table class="table">
+					<thead>
+						<tr><td></td><td>Username</td><td>Profile</td>
+					</thead>
+					% for x in search_results:
+						<tr>
+						<td>${get_profile_picture(x,["profile_picture_for_lists"])}</td>
+						<td><a href="${root_dir}${args[0]}/${args[1]}/profile/${base64.urlsafe_b64encode(x)}">${x}</a></td>
+						<td>${newline_to_br(shorten_to_reasonable_length(get_profile(x),100))}</td>
+						</tr>
+					% endfor
+				</table>
+			% endif
+			% if "profile_page" in render:
+				${get_profile_picture(profile_user,["profile_picture"])}
+				<h3>User profile for <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(profile_user) + '"'} class="user_header">${profile_user}</a></h3>
+				<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/send_form/" + base64.urlsafe_b64encode(profile_user) + '"'}>Send mail to ${profile_user}</a>
+				<br />
+				% if profile_user in currently_following.split(","):
+					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/unfollow/" + base64.urlsafe_b64encode(profile_user) + '"'}>Unfollow ${profile_user}</a>
+				% else:
+					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/follow/" + base64.urlsafe_b64encode(profile_user) + '"'}>Follow ${profile_user}</a>
+				% endif
+				<%
+					cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(profile_user) + "';")
+				%>
+				% for row in cur:
+				<%
+					num_people_following_x = len(row[0].split(","))-2
+				%>
+				<br />
+				% if num_people_following_x == 1:
+					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/who_does_x_follow/" + base64.urlsafe_b64encode(profile_user) + '"'}>Follows 1 person</a>
+				% else:
+					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/who_does_x_follow/" + base64.urlsafe_b64encode(profile_user) + '"'}>Follows ${num_people_following_x} people</a>
+				% endif
+				<%
+					break
+				%>
+				% endfor
+				<br />
+				<%
+					cur.execute("SELECT COUNT(`Username`) FROM `Following` WHERE `Follows` LIKE '%," + sql_validate(profile_user) + ",%';")
+				%>
+				% for row in cur.fetchall():
+					% if row[0] == 1:
+						<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/who_follows/" + base64.urlsafe_b64encode(profile_user) + '"'}>1 person follows ${profile_user}</a><br />
+					% else:
+						<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/who_follows/" + base64.urlsafe_b64encode(profile_user) + '"'}>${row[0]} people follow ${profile_user}</a><br />
+					% endif
+					<%
+						break
+					%>
+				% endfor
+				<div class="profile">
+					${newline_to_br(get_profile(profile_user))}
+				</div>
+				<hr />
+				% if "who_does_x_follow_page" in render:
+					<table class="table">
+						<thead>
+							<tr><td></td><td>People who <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(profile_user) + '"'}>${profile_user}</a> follows</tr></td>
+						</thead>
+						<tbody>
+							<%
+								cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(profile_user) + "';")
+							%>
+							% for row in cur.fetchall():
+								% for user in row[0].split(","):
+									% if user:
+										<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(user) + '"'}>${user}</a></tr></td>
+									% endif
+								% endfor
+							% endfor
+						</tbody>
+					</table>
+					<br />
+					<hr />
+				% endif
+				% if "who_follows" in render:
+					<table class="table">
+						<thead>
+							<tr><td></td><td>People who follow <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(profile_user) + '"'}>${profile_user}</a></tr></td>
+						</thead>
+						<tbody>
+							<%
+								cur.execute("SELECT `Username` FROM `Following` WHERE `Follows` LIKE '%," + sql_validate(profile_user) + ",%';")
+							%>
+							% for row in cur.fetchall():
+								% if row[0]:
+									<tr><td>${get_profile_picture(row[0],["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(row[0]) + '"'}>${row[0]}</a></tr></td>
+								% endif
+							% endfor
+						</tbody>
+					</table>
+					<br />
+					<hr />
+				% endif
+				<%
+					cur.execute("SELECT `Post_ID`,`Poster`,`Time_Of_Posting`,`Post_Contents`,`privacy_settings` FROM `Posts` WHERE `Poster` = '" + sql_validate(profile_user) + "' ORDER BY `Post_ID` DESC;")
+				%>
+				% for row in cur.fetchall():
+					<%
+						render_post = False
+						if username == row[1]:
+							render_post = True
+						elif int(row[4]) == 3:
+							render_post = True
+						elif int(row[4]) == 1:
+							cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(row[1])+"';")
+							for subrow in cur.fetchall():
+								if "," + username + "," in subrow[0]:
+									render_post = True
+								break
+					%>
+					% if render_post:
+						${render_post_function(row[0],row[1],row[2],row[3],row[4])}
+						<hr /><br />
+					% endif
+				% endfor
+			% endif
+			% if "delete_user_form" in render:
+				<h3>Delete a user account</h3>
+				<form name="input" action="${root_dir}${args[0]+"/"+args[1]}/delete_other_account/delete" method="post">
+					Username: <input type="text" name="delete_other_account_account"><br />
+					<input type="submit" value="Submit">
+				</form>
+				<h3>Rename a user account</h3>
+				<form name="input" action="${root_dir}${args[0]+"/"+args[1]}/delete_other_account/rename" method="post">
+					Old username: <input type="text" name="delete_other_account_rename_old_username"><br />
+					New username: <input type="text" name="delete_other_account_rename_new_username"><br />
+					<input type="submit" value="Submit">
+				</form>
+			% endif
+			% if "impersonate_form" in render:
+				<h3>Switch account</h3>
+				<form name="input" action="${root_dir}${args[0]+"/"+args[1]}/impersonate" method="post">
+					Username: <input type="text" name="impersonate_user"><br />
+					<input type="submit" value="Submit">
+				</form>
+			% endif
+			% if "delete_account" in render:
+				<h3>Warning! This will delete your account, and all your settings! Are you sure you wish to continue?</h3>
+				<h3><a href="${root_dir}${args[0]+"/"+args[1]}/really_delete_account" class="delete">Yes I'm Sure</a> - <a href="${root_dir}${args[0]+"/"+args[1]}/dashboard">Nope me the fuck out of here</a></h3>
+			% endif
+			% if "register_page" in render:
+				<h3>Register a new account</h3>
+				<form name="input" action="${root_dir}register_step_two/${register_token}" method="post">
+					Username: <input type="text" name="reguser"><br />
+					Password: <input type="password" name="regpass"><br />
+					Email address: <input type="text" name="regemail"><br />
+					<input type="submit" value="Submit">
+				</form>
+			% endif
+			% if "login_page" in render:
+				<h3>${get_logged_in_users()}</h3>
+				<form name="input" action="" method="post">
+					% if "invalid_password" in render:
+						Username: <input type="text" name="postuser" value="${postuser}"><br />
+					% else:
+						Username: <input type="text" name="postuser"><br />
+					% endif
+					Password: <input type="password" name="postpass"><br />
+					<input type="submit" value="Submit">
+				</form>
+				<br />Need an account? <a href="${root_dir}register">Register here</a>
+			% endif
+			% if "dashboard" in render:
+				<h3>Welcome <a class="user_header" href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(username) + '"'}>${username}</a>!</h3>
+				<h3>You last logged in at ${time.strftime('%A, %B %d, %Y %H:%M:%S', time.localtime(int(last_login_time)))} from ${last_login_address}</h3>
+				<a href="${root_dir}${args[0]}/${args[1]}/messages">
+				<%
+					x = get_number_of_unread_messages(username)
+				%>
+				% if x != 1:
+					You have ${x} unread messages
+				% else:
+					You have ${x} unread message
+				% endif
+				</a>
+				% for poster_to_get in currently_following.split(","):
+					% if poster_to_get:
+						<h3><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(poster_to_get) + '"'} class="user_header">${poster_to_get}</a></h3>
+						<%
+							cur.execute("SELECT `Post_ID`,`Poster`,`Time_Of_Posting`,`Post_Contents`,`privacy_settings` FROM `Posts` WHERE `Poster` = '" + sql_validate(poster_to_get) + "' ORDER BY `Post_ID` DESC LIMIT 3;")
+						%>
+						% for row in cur.fetchall():
+							<%
+								render_post = False
+								if username == row[1]:
+									render_post = True
+								elif int(row[4]) == 3:
+									render_post = True
+								elif int(row[4]) == 1:
+									cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(row[1])+"';")
+									for subrow in cur.fetchall():
+										if "," + username + "," in subrow[0]:
+											render_post = True
+										break
+							%>
+							% if render_post:
+								${render_post_function(row[0],row[1],row[2],row[3],row[4],)}
+								<br />
+							% endif
+						% endfor
+					% endif
+				% endfor
+			% endif
+			% if "settings" in render:
+				<h3>Change your CSS preferences</h3>
+				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/settings/updatecss" method="post">
+					Theme? <select name="css_theme">
+						<option value="green">Green</option>
+						<option value="blue">Blue</option>
+					</select><br />
+					Use custom CSS? <input type="checkbox" name="custom_css_enabled" value="custom_css_enabled"><br />
+					Custom CSS path, like /style.css or http://your.web.site.com/style.css: <input type="text" name="custom_css_path"><br />
+					<input type="submit" value="Submit">
+				</form>
+				<hr />
+				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/settings/password_change" method="post">
+					<h3>Change your password</h3>
+					Old password: <input type="password" name="password_change_old_password">
+					New password: <input type="password" name="password_change_new_password">
+					New password again: <input type="password" name="password_change_new_password_two"><br />
+					<input type="submit" value="Submit">
+				</form>
+				<hr />
+				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/settings/email_change" method="post">
+					<h3>Change your email</h3>
+					Old email: <input type="text" name="email_change_old">
+					New email: <input type="text" name="email_change_new"><br />
+					<input type="submit" value="Submit">
+				</form>
+				<hr />
+				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/settings/profile_change" method="post">
+					<h3>Change your profile</h3>
+					<textarea rows="6" cols="80" name="profile_change_new_profile">${get_profile(username)}</textarea><br />
+					<input type="submit" value="Submit">
+				</form>
+				<hr />
+				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/settings/profile_picture_change" method="post" enctype="multipart/form-data">
+					<h3>Change your profile picture</h3>
+					Maximum file size 1MB. Remember this will only be displayed in a 100x100px square.<br />
+					Valid image types are gif, png, tiff, jpeg and bmp. Extension does not matter.<br />
+					<input type="file" name="file">
+					<br />
+					<input type="submit" value="Submit">
+				</form>
+				<hr />
+				<a href="${root_dir}${args[0]+"/"+args[1]}/delete_account" class="delete_account">Delete account</a>
+			% endif
+			% if "reports" in render:
+				<h3>Choose a report to generate</h3>
+				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/reports/generate" method="post">
+					Table? <select name="table">
+						<option value="PendingUsers"> PendingUsers </option>
+						<option value="permissions">permissions</option>
+						<option value="sessions">sessions</option>
+						<option value="settings">settings</option>
+						<option value="users">users</option>
+						<option value="Private_Messages">Private_Messages</option>
+						<option value="Profiles">Profiles</option>
+						<option value="Login_Logs">Login_Logs</option>
+						<option value="Following">Following</option>
+						<option value="Comments">Comments</option>
+						<option value="Posts">Posts</option>
+						<option value="Pending_password_reset">Pending_password_reset</option>
+						<option value="Pending_email_validation">Pending_email_validation</option>
+						<option value="Chat_channels">Chat_channels</option>
+						<option value="Chat_messages">Chat_messages</option>
+						<option value="Profile_pictures">Profile_pictures</option>
+					</select><br />
+					<input type="submit" value="Submit">
+				</form>
+			% endif
+			% if "report_successful" in render:
+				<h3>Report for ${report_table}</h3>
+				% for row in report_rows:
+					${row | h}<br />
+				% endfor
+				<a href="${root_dir}${args[0]+"/"+args[1]}/reports">Generate another report</a>
+			% endif
+			% if "permission_denied" in render:
+				<br /><a href="${root_dir}${args[0]+"/"+args[1]}/dashboard">Return to dashboard</a>
+			% endif
+			% if "messages" in render:
+				<%
+					title = "You have "
+					unread = get_number_of_unread_messages(username)
+					read = get_number_of_read_messages(username)
+					if unread != 1:
+						title += str(unread) + " unread messages and "
+					else:
+						title += str(unread) + " unread message and "
+					if read != 1:
+						title += str(read) + " read messages"
+					else:
+						title += str(read) + " read message"
+				%>
+				<h3>${title}</h3>
+				<%
+					if unread > 0:
+						unread = get_all_unread_messages(username)
+					if read > 0:
+						read = get_all_read_messages(username)
+				%>
+				<br />
+				% if unread:
+					<h4>Unread messages</h4>
+					${generate_table_of_messages(unread)}
+				% endif
+				<br />
+				% if read:
+					<h4>Old messages</h4>
+					${generate_table_of_messages(read)}
+				% endif
+
+
+
+				<br /><br />
+				<h3><a href="${root_dir}${args[0]+"/"+args[1]}/messages/send_form">Send a message</a></h3>
+				<h3><a href="${root_dir}${args[0]+"/"+args[1]}/messages/view_sent">View your sent messages</a></h3>
+				<h3><a href="${root_dir}${args[0]+"/"+args[1]}/messages/undelete_everything">Do something annoying</a></h3>
+
+			% endif
+			% if "view_sent" in render:
+				<%
+					cur.execute("SELECT `Priority`, `To`, `Missive`, `Mail_ID` FROM `Private_Messages` WHERE `From` = '" + sql_validate(username) + "';")
+				%>
+				<table class="table">
+					<thead>
+						<tr><td>Priority</td><td>To</td><td>Message</td><td>Actions</td></tr>
+					</thead>
+					<tbody>
+						% for row in cur.fetchall():
+							<tr><td><span class="message_priority">
+							% for x in xrange(int(row[0])):
+								!
+							% endfor
+							</span></td>
+							<td>${row[1]}</td>
+							<td>
+							${newline_to_br(shorten_to_reasonable_length(row[2],100))}
+							</td>
+							<td>
+							% if len(row[2]) > 100:
+								<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/view/" + base64.urlsafe_b64encode(str(row[3])) + '"'}>View full message</a> - 
+							% endif
+							</td>
+							</tr>
+						% endfor
+					</tbody>
+				</table>
+
+			% endif
+			% if "debug" in render:
+				<hr />${debug | h}<br />${d | h}
+			% endif
+
+		</div>
+		<div id="foot">Niles Rogoff 2014<br /><a href=${'"' + root_dir + "private_policy" + '"' } style="color:grey;font-weight:default;">Private Policy</a><br /><a href=${'"' + root_dir + "api" + '"' } style="color:grey;font-weight:default;">For developers</a></div>
+	</body>
+</html>
+<%
+	try:
+		cur.close()
+		conn.close()
+	except:
+		pass
+%>
+% if "redirect_to_dashboard" in render:
+<!--${newsession}-->
+% endif
