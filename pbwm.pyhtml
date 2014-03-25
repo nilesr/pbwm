@@ -2024,7 +2024,7 @@ chatbox_type = "polling"
 			% if "list_of_online_users" in render:
 				<h3>List of online users</h3>
 				<%
-					cur.execute("SELECT `Username` FROM `Sessions`")
+					cur.execute("SELECT `Username` FROM `sessions` WHERE `Timestamp` > '"+str(int(time.time())-420)+"';")
 					users = []
 					for row in cur.fetchall():
 						users += row
