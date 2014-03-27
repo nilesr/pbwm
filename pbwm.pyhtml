@@ -159,12 +159,14 @@ from email.mime.text import MIMEText
 <%
 render = []
 file_storage_dir = "/var/www"
-fully_qualified_domain_name = "niles.mooo.com:4000"
+#fully_qualified_domain_name = "niles.mooo.com:4000"
+fully_qualified_domain_name = "localhost:4000"
 domain_name_no_port = fully_qualified_domain_name.split(":")[0]
 root_dir = "/pbwm-dynamic/"
 #root_dir = "/pbwm.pyhtml?pbwm="
 get_variable_character = "?"
 #get_variable_character = "&"
+chatbox_type = "polling"
 def sql_validate(stuff):
 #	return re.sub("'","\\'",stuff)
 	return conn.escape_string(stuff)
@@ -1353,7 +1355,6 @@ elif username and ("redirect_to_dashboard" not in render):
 else:
 	if not "login_page" in render:
 		render.append("login_page")
-chatbox_type = "polling"
 %>
 <!doctype html>
 <html>
