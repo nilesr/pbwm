@@ -164,10 +164,17 @@ url_scheme="https"
 fully_qualified_domain_name = "localhost:4443"
 domain_name_no_port = fully_qualified_domain_name.split(":")[0]
 root_dir = "/pbwm-dynamic/"
-#root_dir = "/pbwm.pyhtml?pbwm="
+#root_dir = "/pbwm/pbwm.pyhtml?pbwm="
+pbwm_dir = "/pbwm/"
 get_variable_character = "?"
 #get_variable_character = "&"
 chatbox_type = "polling"
+if not os.path.isdir(file_storage_dir+pbwm_dir) or not os.path.isdir(file_storage_dir+pbwm_dir+"pbwm_data"):
+	try:
+		os.mkdir(file_storage_dir+pbwm_dir)
+	except:
+		print("Fuck.")
+		return False
 def sql_validate(stuff):
 #	return re.sub("'","\\'",stuff)
 	return conn.escape_string(stuff)
@@ -177,7 +184,7 @@ except:
 	args = []
 	render.append("general_redirect")
 	general_redirect = root_dir
-css = "/pbwm/pbwm_static/themes/blue.css"
+css = pbwm_dir + "pbwm_static/themes/blue.css"
 debug = False#			debug = traceback.format_exc()
 general_redirect = False
 conn = pymysql.connect(host="127.0.0.1", port=3306, user="pbwm", passwd='', db="pbwm")
@@ -202,8 +209,8 @@ def get_profile_picture(user,classes):
 	if get_permissions(user)['profile_picture_has_border'] == 1:
 		image_classes += ["admin_profile_picture"]
 	if profile_user_image_type:
-		return "<img class=\""+" ".join(image_classes)+"\" src=" + '"' + "/pbwm/pbwm_data/" + user + "." + profile_user_image_type + '"' + " />"
-	return "<img class=\""+" ".join(image_classes)+"\" src=" + '"' + "/pbwm/pbwm_static/default.png" + '"' + " />"
+		return "<img class=\""+" ".join(image_classes)+"\" src=" + '"' + pbwm_dir + "pbwm_data/" + user + "." + profile_user_image_type + '"' + " />"
+	return "<img class=\""+" ".join(image_classes)+"\" src=" + '"' + pbwm_dir + "pbwm_static/default.png" + '"' + " />"
 def replace_specials(stuff):
 	return stuff.replace("SPECIAL:args[0]",args[0]).replace("SPECIAL:args[1]",args[1])
 def check_if_valid_email(stuff):
@@ -269,7 +276,7 @@ def delete_user(username):
 	cur.execute("DELETE FROM `Chat_messages` WHERE `Username` = '" + sql_validate(username) + "';")
 	cur.execute("SELECT `type` FROM `Profile_pictures` WHERE `Username` = '"+sql_validate(username)+"';")
 	type = str(cur.fetchone()[0])
-	os.remove(file_storage_dir+"/pbwm/pbwm_data/"+username+"."+type)
+	os.remove(file_storage_dir+pbwm_dir+"pbwm_data/"+username+"."+type)
 	cur.execute("DELETE FROM `Profile_pictures` WHERE `Username` = '" + sql_validate(username) + "';")
 	cur.execute("SELECT `channel_banlist`,`channel_name` FROM `Chat_channels`;")
 	for row in cur.fetchall():
@@ -568,7 +575,7 @@ elif username and ("redirect_to_dashboard" not in render):
 					css_path = row[1]
 					css_theme = row[2]
 					if int(css_is_custom) == 0:
-						css = "/pbwm/pbwm_static/themes/"+css_theme+".css"
+						css = pbwm_dir + "pbwm_static/themes/"+css_theme+".css"
 					else:
 						css = css_path
 					break
@@ -599,7 +606,7 @@ elif username and ("redirect_to_dashboard" not in render):
 									if custom_css_enabled == 1:
 										css = d['custom_css_path']
 									else:
-										css = "/pbwm/pbwm_static/themes/"+d['css_theme']+".css"
+										css = pbwm_dir+"pbwm_static/themes/"+d['css_theme']+".css"
 									render.append("css_update_successful")
 								except:
 									render.append("css_update_error")
@@ -661,7 +668,7 @@ elif username and ("redirect_to_dashboard" not in render):
 											render.append("unsupported filetype")
 											os.remove("/tmp/"+username)
 										else:
-											os.rename("/tmp/"+username,file_storage_dir+"/pbwm/pbwm_data/"+username+"."+type)
+											os.rename("/tmp/"+username,file_storage_dir+pbwm_dir+"pbwm_data/"+username+"."+type)
 											cur.execute("UPDATE `Profile_pictures` SET `type` = '"+sql_validate(type)+"' WHERE `Username` = '"+sql_validate(username)+"';")
 									else:
 										render.append("file_too_large")
