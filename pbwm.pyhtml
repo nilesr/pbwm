@@ -1560,9 +1560,6 @@ else:
 			<% return %>
 		% endif
 		<div class="message_box">
-			% if "login_page" in render:
-				<span class="success">In accordance to our terms and conditions, we are required to inform you that our terms and conditions have changed.</span>
-			% endif
 			% if "mass_message_success" in render:
 				<span class="success">Mass message sent</span>
 			% endif
