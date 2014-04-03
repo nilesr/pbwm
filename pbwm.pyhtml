@@ -160,7 +160,8 @@ from email.mime.text import MIMEText
 render = []
 file_storage_dir = "/var/www"
 #fully_qualified_domain_name = "niles.mooo.com:4000"
-fully_qualified_domain_name = "localhost:4000"
+url_scheme="https"
+fully_qualified_domain_name = "localhost:4443"
 domain_name_no_port = fully_qualified_domain_name.split(":")[0]
 root_dir = "/pbwm-dynamic/"
 #root_dir = "/pbwm.pyhtml?pbwm="
@@ -225,12 +226,12 @@ def send_email_to_user(user,subject,missive,isemail = False,sendanyways = False)
 	if emails_sent < 3:
 		pass
 	elif emails_sent == 3:
-		missive = 'You have at least three notifications on hold on PBWM. You will recieve no more emails until you log in at <a href="http://' + fully_qualified_domain_name + '">http://' + fully_qualified_domain_name + "</a>"
+		missive = 'You have at least three notifications on hold on PBWM. You will recieve no more emails until you log in at <a href="'+url_scheme+'://' + fully_qualified_domain_name + '">'+url_scheme+'://' + fully_qualified_domain_name + "</a>"
 		subject = "You have at least three notifications on hold"
 	else:
 		return
 	cur.execute("UPDATE `users` SET `Emails_sent_since_last_login` = '" + sql_validate(str(emails_sent + 1)) + "' WHERE `Username` = '" + sql_validate(user) + "';")
-	missive += "<br /><br /><br /><span style=\"color:grey;font-size:0.5em;\">Sent from a PBWM automated bot. Do not respond to this message. This PBWM site is owned and operated at "+'<a href="http://' + fully_qualified_domain_name + '">http://' + fully_qualified_domain_name+"</a></span>"
+	missive += "<br /><br /><br /><span style=\"color:grey;font-size:0.5em;\">Sent from a PBWM automated bot. Do not respond to this message. This PBWM site is owned and operated at "+'<a href="'+url_scheme+'://' + fully_qualified_domain_name + '">'+url_scheme+'://' + fully_qualified_domain_name+"</a></span>"
 	msg = MIMEText(missive, 'html')
 	msg['Subject'] = subject
 	msg['From'] = "PyBlogWithMe@" + fully_qualified_domain_name
@@ -444,7 +445,7 @@ elif username == "register_step_two":
 					else:
 						email_validation_token = base64.urlsafe_b64encode(os.urandom(50))
 						salt = base64.urlsafe_b64encode(os.urandom(128))
-						send_email_to_user(d['regemail'],d['reguser'] + ", please validate email address","Your email validation link is below.<br /><a href=\"http://" + fully_qualified_domain_name + root_dir + "register_step_three/" + email_validation_token + "\">"+ fully_qualified_domain_name + root_dir + "register_step_three/" + email_validation_token +"</a>", isemail=True)
+						send_email_to_user(d['regemail'],d['reguser'] + ", please validate email address","Your email validation link is below.<br /><a href=\""+url_scheme+"://" + fully_qualified_domain_name + root_dir + "register_step_three/" + email_validation_token + "\">"+ fully_qualified_domain_name + root_dir + "register_step_three/" + email_validation_token +"</a>", isemail=True)
 						cur.execute("INSERT INTO `Pending_email_validation` (`Username`,`Password`,`Salt`,`Email`,`Registration_key`) VALUES('" + sql_validate(d['reguser']) + "','" + hashlib.sha512(sql_validate(d['regpass'] + salt)).hexdigest() + "','" + salt + "','" + sql_validate(d['regemail']) + "','"+email_validation_token+"');")
 						render = ["register_success","login_page"]
 						cur.execute("TRUNCATE TABLE `PendingUsers`;")
@@ -495,7 +496,7 @@ elif username == "recover_step_two":
 				token = base64.urlsafe_b64encode(os.urandom(50))
 				cur.execute("DELETE FROM `Pending_password_reset` WHERE `Username` = '" + sql_validate(row[0]) + "';")
 				cur.execute("INSERT INTO `Pending_password_reset` (`Username`, `token`, `timestamp`) VALUES('" + sql_validate(row[0]) + "','"+sql_validate(token)+"','"+sql_validate(str(int(time.time())))+"');")
-				url = "http://" + fully_qualified_domain_name + root_dir + "recover_step_three/" + token
+				url = url_scheme+"://" + fully_qualified_domain_name + root_dir + "recover_step_three/" + token
 				send_email_to_user(row[0],"Password reset email for " + row[0],"Someone has requested a password reset for this account. If you did not do this, you can safely ignore this message. To reset your password, please click on the link below<br /><br /><a href=\""+url+"\">"+url+"</a>",sendanyways = True)
 				render = ["recover_form","recover_email_sent"]
 	except:
@@ -845,7 +846,7 @@ elif username and ("redirect_to_dashboard" not in render):
 										if user_exists:
 											try:
 												if permissions["can_send_messages_with_increased_priority"] == 1 or (int(d['send_post_priority']) <= 3 and int(d['send_post_priority']) >= 0):
-													send_email_to_user(d['send_post_to'],"New message from " + username, "You have a new message from " + username + " on PBWM, at " + '<a href="http://' + fully_qualified_domain_name + '">http://' + fully_qualified_domain_name + "</a>. <br /> Message data is as follows. <br /><br />" + newline_to_br(d['send_post_missive']))
+													send_email_to_user(d['send_post_to'],"New message from " + username, "You have a new message from " + username + " on PBWM, at " + '<a href="'+url_scheme+'://' + fully_qualified_domain_name + '">'+url_scheme+'://' + fully_qualified_domain_name + "</a>. <br /> Message data is as follows. <br /><br />" + newline_to_br(d['send_post_missive']))
 													cur.execute("INSERT INTO `Private_Messages` (`To`, `From`, `Missive`, `Priority`, `timestamp`) VALUES ('"+sql_validate(d['send_post_to'])+"', '"+sql_validate(username)+"', '"+sql_validate(d['send_post_missive'])+"', '"+sql_validate(d['send_post_priority'])+"', '"+sql_validate(str(int(time.time())))+"');")
 													render.append("messages_send_post_success")
 												else:
@@ -1331,7 +1332,7 @@ elif username and ("redirect_to_dashboard" not in render):
 								for row in cur.fetchall():
 									users += row
 								for user in users:
-									send_email_to_user(user,"New message from " + username, "You have a new message from " + username + " on PBWM, at " + '<a href="http://' + fully_qualified_domain_name + '">http://' + fully_qualified_domain_name + "</a>. <br /> Message data is as follows. <br /><br />" + newline_to_br(mass_message_data))
+									send_email_to_user(user,"New message from " + username, "You have a new message from " + username + " on PBWM, at " + '<a href="'+url_scheme+'://' + fully_qualified_domain_name + '">'+url_scheme+'://' + fully_qualified_domain_name + "</a>. <br /> Message data is as follows. <br /><br />" + newline_to_br(mass_message_data))
 									cur.execute("INSERT INTO `Private_Messages` (`To`,`From`,`Missive`,`Priority`,`timestamp`) VALUES('"+sql_validate(user)+"','"+sql_validate(username)+"','"+sql_validate(mass_message_data)+"','0','"+sql_validate(str(int(time.time())))+"')")
 								render.append("mass_message_success")
 								render.append("messages")
@@ -1372,7 +1373,7 @@ else:
 			<link rel="stylesheet" href="${css}" />
 		% endif
 		% if "chat_url" in render:
-			<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.3/jquery.min.js"></script>
+			<script type="text/javascript" src="${url_scheme}://ajax.googleapis.com/ajax/libs/jquery/1.3/jquery.min.js"></script>
 			<script type="text/javascript">
 				$(document).ready(function(){
 					$("#submitmsg").click(function(){	
