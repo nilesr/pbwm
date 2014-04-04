@@ -157,6 +157,8 @@ from email.mime.text import MIMEText
 </%def>
 
 <%
+for item in d:
+	d[item] = str(d[item])
 render = []
 file_storage_dir = "/var/www"
 #fully_qualified_domain_name = "niles.mooo.com:4000"
@@ -179,7 +181,7 @@ def sql_validate(stuff):
 #	return re.sub("'","\\'",stuff)
 	return conn.escape_string(stuff)
 try:
-	args = d["pbwm"].split("/")
+	args = d["pbwm"].encode('ascii','ignore').split("/")
 except:
 	args = []
 	render.append("general_redirect")
@@ -674,6 +676,8 @@ elif username and ("redirect_to_dashboard" not in render):
 										render.append("file_too_large")
 								except:
 									render.append("profile_picture_change_error")
+									render.append("debug")
+									debug = traceback.format_exc()
 							else:
 								render.append("unknown_command")
 						except:
@@ -791,7 +795,7 @@ elif username and ("redirect_to_dashboard" not in render):
 								pass
 						if search_string == "":
 							render.append("search_results")
-							cur.execute("SELECT `Username` FROM `Users` ORDER BY `Username` ASC LIMIT 50;")
+							cur.execute("SELECT `Username` FROM `users` ORDER BY `Username` ASC LIMIT 50;")
 							search_results = []
 							for row in cur.fetchall():
 								search_results += row
@@ -800,7 +804,7 @@ elif username and ("redirect_to_dashboard" not in render):
 								render.append("general_redirect")
 								general_redirect = root_dir+args[0]+"/"+args[1]+"/profile/"+base64.urlsafe_b64encode(search_string)
 							elif search_string != "":
-								cur.execute("SELECT `Username` from `users` WHERE `Username` LIKE '%" + sql_validate(search_string) + "%';")
+								cur.execute("SELECT `Username` FROM `users` WHERE `Username` LIKE '%" + sql_validate(search_string) + "%';")
 								results = cur.fetchall()
 								if results:
 									search_results = []
@@ -1186,11 +1190,11 @@ elif username and ("redirect_to_dashboard" not in render):
 									if not permissions['is_distinguished_in_chat']:
 										user_chat_color = "#646464"
 									else:
-										cur.execute("SELECT `Chat_color` FROM `Users` WHERE `Username` = '" + sql_validate(username) + "';")
+										cur.execute("SELECT `Chat_color` FROM `users` WHERE `Username` = '" + sql_validate(username) + "';")
 										user_chat_color = cur.fetchone()[0]
 									cur.execute("SELECT `channel_banlist` FROM `Chat_channels` WHERE `channel_name` = '"+sql_validate(chat_channel)+"';")
 									list_of_banned_people = cur.fetchone()[0]
-									passed_text = d['text']
+									passed_text = str(d['text'])
 									new_passed_text = ""
 									message_special_type = 0
 									for word in passed_text.split(" "):
@@ -1255,7 +1259,7 @@ elif username and ("redirect_to_dashboard" not in render):
 										else:
 											return
 									elif d['text'][0:11].lower() == "/set_color ":
-										cur.execute("UPDATE `Users` SET `Chat_color` = '"+sql_validate(d['text'][11:])+"' WHERE `Username` = '"+sql_validate(username)+"';")
+										cur.execute("UPDATE `users` SET `Chat_color` = '"+sql_validate(d['text'][11:])+"' WHERE `Username` = '"+sql_validate(username)+"';")
 										return
 									elif d['text'][0:4].lower() == "/me ":
 										not_a_command = True
@@ -1298,6 +1302,8 @@ elif username and ("redirect_to_dashboard" not in render):
 										pass
 								except:
 									render.append("chat_unknown_error")
+									render.append("debug")
+									debug = traceback.format_exc()
 							elif chat_action == "embedded":
 								render.append("chat_embedded")
 							elif chat_action == "banlist":
@@ -1334,7 +1340,7 @@ elif username and ("redirect_to_dashboard" not in render):
 						if permissions['can_send_mass_messages'] == 1:
 							try:
 								mass_message_data = d['mass_message_data']
-								cur.execute("SELECT `Username` FROM `Users`")
+								cur.execute("SELECT `Username` FROM `users`")
 								users = []
 								for row in cur.fetchall():
 									users += row
@@ -2729,7 +2735,7 @@ else:
 
 			% endif
 			% if "debug" in render:
-				<hr />${debug | h}<br />${d | h}
+				<hr />${debug | h}<br />${d | h}<br />${args | h}
 			% endif
 
 		</div>
