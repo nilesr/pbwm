@@ -1,9 +1,6 @@
 <%!
 #TODO
-#	Forum
-#TODO but not going to get done
-#	Websocket userlist
-#	Websocket delete message
+#	Not logged in searching and viewing of profiles, posts and comments
 import sys
 sys.path.append("/usr/local/lib/python2.7/site-packages/")
 sys.path.append("/usr/local/Cellar/python/2.7.6/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages/PyMySQL-0.6.1-py2.7.egg")
@@ -160,23 +157,17 @@ from email.mime.text import MIMEText
 for item in d:
 	d[item] = str(d[item])
 render = []
-file_storage_dir = "/var/www"
-#fully_qualified_domain_name = "niles.mooo.com:4000"
-url_scheme="https"
-fully_qualified_domain_name = "localhost:4443"
+fully_qualified_domain_name = "wintercress.roaming.niles.mooo.com:4000"
+url_scheme="http"
+#fully_qualified_domain_name = "localhost:4443"
 domain_name_no_port = fully_qualified_domain_name.split(":")[0]
-root_dir = "/pbwm-dynamic/"
+root_dir = "/pbwm_dynamic/"
 #root_dir = "/pbwm/pbwm.pyhtml?pbwm="
-pbwm_dir = "/pbwm/"
+pbwm_dir = "/"
 get_variable_character = "?"
 #get_variable_character = "&"
 chatbox_type = "polling"
-if not os.path.isdir(file_storage_dir+pbwm_dir) or not os.path.isdir(file_storage_dir+pbwm_dir+"pbwm_data"):
-	try:
-		os.mkdir(file_storage_dir+pbwm_dir)
-	except:
-		print("Fuck.")
-		return False
+
 def sql_validate(stuff):
 #	return re.sub("'","\\'",stuff)
 	return conn.escape_string(stuff)
@@ -1417,44 +1408,8 @@ else:
 							},
 						});
 					}
-					% if chatbox_type == "polling":
-						loadLog(); // Do once at the start
-						setInterval (loadLog, 1000); //Reload file every 1 second
-					% else:
-						var Socket = new WebSocket("ws://${domain_name_no_port}:4001/chat", "pbwm-chat");
-						Socket.onopen = function() {
-							Socket.send("CHANNEL:${chat_channel}");
-							Socket.send("USERNAME:${username}");
-						};
-						Socket.onmessage = function (evt) {
-							if (evt.data == "SPECIAL:clear") {
-								$("#chatbox").html("");
-							} else if (evt.data.substring(0,15).toLowerCase() == "special:locked ") {
-								if (evt.data.substring(15) == "true") {
-									document.getElementById("locked-message").style.display = "inline"; // I would love to use jQuery here, but I think it hates me
-								} else { // $("#locked-message").style.display = "inline"; // returns an undefined error for reasons beyond my comprehension
-									document.getElementById("locked-message").style.display = "none";
-								}
-							} else if (evt.data.substring(0,15).toLowerCase() == "special:banned ") {
-								if (evt.data.substring(15) == "true") {
-									document.getElementById("banned-message").style.display = "inline"; 
-								} else {
-									document.getElementById("banned-message").style.display = "none";
-								}
-							} else if (evt.data.substring(0,15).toLowerCase() == "special:delete ") {
-								document.getElementById("message-" + evt.data.substring(15)).style.display = "none";
-							} else {
-								if ($("#chatbox").html() == "") {
-									$("#chatbox").html(evt.data);								
-								} else {
-									$("#chatbox").html($("#chatbox").html() + '<br />' + evt.data);
-								}
-							}
-						};
-						Socket.onerror = function(error) {
-							$("#chatbox").html($("#chatbox").html() + '<br /><span style="color:red;">Error connecting to the chat server: ' + error + "</span>");
-						};
-					% endif
+					loadLog(); // Do once at the start
+					setInterval (loadLog, 1000); //Reload file every 1 second
 				});
 				function textCounter(field, cnt, maxlimit) {
 					var cntfield = document.getElementById(cnt);
