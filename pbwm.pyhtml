@@ -214,13 +214,16 @@ def send_email_to_user(user,subject,missive,isemail = False,sendanyways = False)
 		for row in cur.fetchall():
 			email_to_send_to = row[0]
 			break
-		cur.execute("SELECT `Emails_sent_since_last_login` FROM `users` WHERE `Username` = '" + sql_validate(user) + "';")
+		cur.execute("SELECT `Emails_sent_since_last_login`,`Send_notification_emails` FROM `users` WHERE `Username` = '" + sql_validate(user) + "';")
 		for row in cur.fetchall():
 			emails_sent = row[0]
+			send_notification_emails = row[1]
 			break
 	else:
 		email_to_send_to = user
 		emails_sent = 0
+	if send_notification_emails == "1":
+		emails_sent = 4
 	if sendanyways:
 		emails_sent = 0
 	if emails_sent < 3:
@@ -653,20 +656,20 @@ elif username and ("redirect_to_dashboard" not in render):
 							elif args[3] == "profile_picture_change":
 								try:
 									if len(d['file']) < 1048576:
-										temporary_file = open("/tmp/"+username,'w')
-										temporary_file.write(d["file"])
-										temporary_file.close()
-										type = imghdr.what("/tmp/"+username)
-										if not type in ['gif','png','tiff','jpeg','bmp']:
-											render.append("unsupported filetype")
-											os.remove("/tmp/"+username)
-										else:
-											os.rename("/tmp/"+username,file_storage_dir+pbwm_dir+"pbwm_data/"+username+"."+type)
-											cur.execute("UPDATE `Profile_pictures` SET `type` = '"+sql_validate(type)+"' WHERE `Username` = '"+sql_validate(username)+"';")
+										pass
+										# todo
 									else:
 										render.append("file_too_large")
 								except:
 									render.append("profile_picture_change_error")
+									render.append("debug")
+									debug = traceback.format_exc()
+							elif args[3] == "email_notification_change":
+								try:
+									cur.execute("UPDATE `users` SET `Send_notification_emails` = '" + sql_validate(d["new_email_notification_setting"]) + "' WHERE `Username` = '" + sql_validate(username) + "';")
+									render.append("email_notification_settings_changed_successfully")
+								except:
+									render.append("email_notification_settings_change_unknown_error")
 									render.append("debug")
 									debug = traceback.format_exc()
 							else:
@@ -1283,8 +1286,8 @@ elif username and ("redirect_to_dashboard" not in render):
 												if last_message_time:
 													if int(time.time()) - last_message_time <= 1:
 														return
-											bad = ['cunt', 'nigger', 'bitch', 'fuck', 'fag', 'faggot', 'kike', ' ass ', 'dumbass', 'smartass', ' i ', 'ass.', 'ass!', 'ass?', 'ass,', 'shit']
-											good = ['c***', '******', 'b**ch', 'f**k', '***', '******', 'k*ke', ' *** ', 'dumb***', 'smart***', ' I ', '***.', '***!', '***?', '***,', 'sh*t']
+											bad = ['cunt', 'nigger', 'bitch', 'fuck', 'fag', 'faggot', ' kike', ' ass ', 'dumbass', 'smartass', ' i ', 'shit']
+											good = ['c***', '******', 'b**ch', 'f**k', '***', '******', ' respectable jewish person', ' *** ', 'dumb***', 'smart***', ' I ', 'sh*t']
 											for i in xrange(len(bad)):
 												message_to_log = message_to_log.replace(bad[i],good[i])
 											cur.execute("INSERT INTO `Chat_messages` (`Username`, `Timestamp`, `Message`, `Channel`, `Special_type`) VALUES ('"+sql_validate(username)+"','"+sql_validate(str(int(time.time())))+"','"+sql_validate(message_to_log)+"', '"+sql_validate(chat_channel)+"','"+sql_validate(str(message_special_type))+"');")
@@ -1529,6 +1532,12 @@ else:
 			<% return %>
 		% endif
 		<div class="message_box">
+			% if "email_notification_settings_changed_successfully" in render:
+				<span class="success">Successfully changed your email notification settings</span>
+			% endif
+			% if "email_notification_settings_change_unknown_error" in render:
+				<span class="error">An unknown error occured while changing your email notification settings</span>
+			% endif
 			% if "mass_message_success" in render:
 				<span class="success">Mass message sent</span>
 			% endif
@@ -1989,7 +1998,7 @@ else:
 			% endif
 			% if "api_documentation" in render:
 				<h3>API documentation</h3>
-				Simply send a POST request to ${fully_qualified_domain_name+root_dir} with the variables postuser and postpass. The last line of the response text is "&lt;!--" followed by your session ID, then a "--&gt;". <br /><br />Session IDs are valid for three minutes after each request. If you request a new session ID, or query the "logout" page, your session will be destroyed.<br /><br />Requests are sent using GET. For example, if my sesion ID is "session-id", and my username is "username", a request to like a blog post with the ID of 1 would look be a GET request to the url <pre>${root_dir}dXNlcm5hbWU=/session-id/like_post/MQ==</pre>All base64 data used is encoded (and should be decoded) with the urlsafe base64 variant.
+				Simply send a POST request to ${fully_qualified_domain_name+root_dir} with the variables postuser and postpass. The last line of the response text is "&lt;!--" followed by your session ID, then a "--&gt;". <br /><br />Session IDs are valid for three minutes after the last request. If you request a new session ID, or query the "logout" page, your session will be destroyed.<br /><br />Requests are sent using GET or POST. For example, if my sesion ID is "session-id", and my username is "username", a request to like a blog post with the ID of 1 would look be a GET request to the url <pre>${root_dir}dXNlcm5hbWU=/session-id/like_post/MQ==</pre>All base64 data used is encoded (and should be decoded) with the "urlsafe" base64 variant.
 			% endif
 			% if "list_of_online_users" in render:
 				<h3>List of online users</h3>
@@ -2568,6 +2577,20 @@ else:
 					<input type="submit" value="Submit">
 				</form>
 				<hr />
+				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/settings/email_notification_change" method="post">
+					<h3>Recieve email notifications?</h3>
+					<%
+						cur.execute("SELECT `Send_notification_emails` FROM `users` WHERE `Username` = '"+sql_validate(username)+"';")
+						current_value = int(cur.fetchone()[0])
+					%>
+					% if current_value == 1:
+						<input type="radio" name="new_email_notification_setting" value="1" checked>Do recieve notifications <input type="radio" name="new_email_notification_setting" value="0">Do not recieve notifications
+					% else:
+						<input type="radio" name="new_email_notification_setting" value="1">Do recieve notifications <input type="radio" name="new_email_notification_setting" value="0" checked>Do not recieve notifications
+					% endif
+					<input type="submit" value="Submit">
+				</form>
+				<hr />
 				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/settings/profile_change" method="post">
 					<h3>Change your profile</h3>
 					<textarea rows="6" cols="80" name="profile_change_new_profile">${get_profile(username)}</textarea><br />
@@ -2576,8 +2599,8 @@ else:
 				<hr />
 				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/settings/profile_picture_change" method="post" enctype="multipart/form-data">
 					<h3>Change your profile picture</h3>
-					Maximum file size 1MB. Remember this will only be displayed in a 100x100px square.<br />
-					Valid image types are gif, png, tiff, jpeg and bmp. Extension does not matter.<br />
+					Maximum file size 1MB. Remember, this will only be displayed in a 100x100px square.<br />
+					Valid image types are gif, png, tiff, jpeg and bmp.<br />
 					<input type="file" name="file">
 					<br />
 					<input type="submit" value="Submit">
