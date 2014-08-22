@@ -1,6 +1,8 @@
 <%!
 #TODO
+#	Multiple pages
 #	Not logged in searching and viewing of profiles, posts and comments
+#	API
 import sys
 sys.path.append("/usr/local/lib/python2.7/site-packages/")
 sys.path.append("/usr/local/Cellar/python/2.7.6/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages/PyMySQL-0.6.1-py2.7.egg")
@@ -8,44 +10,44 @@ import os, hashlib, random, base64, time, pymysql, traceback, re, markdown2, smt
 from email.mime.text import MIMEText
 %>
 <%def name="generate_table_of_messages(list_of_stuff)">
-<table class="table">
-	<thead>
-		<tr><td>Timestamp</td><td>Priority</td><td>From</td><td>Message</td><td>Actions</td></tr>
-	</thead>
-	<tbody>
-		% for id in list_of_stuff:
-			<%
-				From, Missive, Priority, Timestamp = get_message_by_id(username,id)
-			%>
-			<!--Mail id: ${id}-->
-			<tr>
-				<td>
-					${time.strftime('%Y/%m/%d<br />%H:%M:%S', time.localtime(Timestamp))}
-				</td>
-				<td>
-					<span class="message_priority">
-						% for i in xrange(Priority):
-							!
-						% endfor
-					</span>
-				</td>
-				<td>
-					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(From) + '"'}>${From}</a>
-				</td>
-				<td>
-					${newline_to_br(shorten_to_reasonable_length(Missive,100))}
-				</td>
-				<td>
-					% if len(Missive) > 100:
-						<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/view/" + base64.urlsafe_b64encode(str(id)) + '"'}>View full message</a> - 
-					% endif
-					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/mark_as_read/" + base64.urlsafe_b64encode(str(id)) + '"'}>Mark as read</a> - 
-					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/delete/" + base64.urlsafe_b64encode(str(id)) + '"'}>Delete</a>
-				</td>
-			</tr>
-		% endfor
-	</tbody>
-</table>
+	<table class="table">
+		<thead>
+			<tr><td>Timestamp</td><td>Priority</td><td>From</td><td>Message</td><td>Actions</td></tr>
+		</thead>
+		<tbody>
+			% for id in list_of_stuff:
+				<%
+					From, Missive, Priority, Timestamp = get_message_by_id(username,id)
+				%>
+				<!--Mail id: ${id}-->
+				<tr>
+					<td>
+						${time.strftime('%Y/%m/%d<br />%H:%M:%S', time.localtime(Timestamp))}
+					</td>
+					<td>
+						<span class="message_priority">
+							% for i in xrange(Priority):
+								!
+							% endfor
+						</span>
+					</td>
+					<td>
+						<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(From) + '"'}>${From}</a>
+					</td>
+					<td>
+						${newline_to_br(shorten_to_reasonable_length(Missive,100))}
+					</td>
+					<td>
+						% if len(Missive) > 100:
+							<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/view/" + base64.urlsafe_b64encode(str(id)) + '"'}>View full message</a> - 
+						% endif
+						<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/mark_as_read/" + base64.urlsafe_b64encode(str(id)) + '"'}>Mark as read</a> - 
+						<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/delete/" + base64.urlsafe_b64encode(str(id)) + '"'}>Delete</a>
+					</td>
+				</tr>
+			% endfor
+		</tbody>
+	</table>
 </%def>
 <%def name="render_post_function(post_id,poster,post_time,post_contents,permissions,show_table=False)">
 
@@ -196,13 +198,15 @@ def get_logged_in_users():
 def get_profile_picture(user,classes):
 	if not user:
 		return
-	cur.execute("SELECT `type` FROM `Profile_pictures` WHERE `Username` = '"+sql_validate(user)+"';")
-	profile_user_image_type = cur.fetchone()[0]
+	cur.execute("SELECT `type`,`Data` FROM `Profile_pictures` WHERE `Username` = '"+sql_validate(user)+"';")
+	row = cur.fetchone()
+	profile_user_image_type = row[0]
+	profile_user_image_data = row[1]
 	image_classes = classes
 	if get_permissions(user)['profile_picture_has_border'] == 1:
 		image_classes += ["admin_profile_picture"]
 	if profile_user_image_type:
-		return "<img class=\""+" ".join(image_classes)+"\" src=" + '"' + pbwm_dir + "pbwm_data/" + user + "." + profile_user_image_type + '"' + " />"
+		return "<img class=\""+" ".join(image_classes)+"\" src=data:image/"+ profile_user_image_type + ";base64," + profile_user_image_data + ' />'
 	return "<img class=\""+" ".join(image_classes)+"\" src=" + '"' + pbwm_dir + "pbwm_static/default.png" + '"' + " />"
 def replace_specials(stuff):
 	return stuff.replace("SPECIAL:args[0]",args[0]).replace("SPECIAL:args[1]",args[1])
@@ -386,6 +390,25 @@ def get_profile(username):
 	cur.execute("SELECT `Profile` from `Profiles` WHERE `Username` = '" + sql_validate(username) + "';")
 	for row in cur.fetchall():
 		return row[0]
+def get_recent_posts():
+	total_list = currently_following
+	for person_user_follows in currently_following.split(","):
+		cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(person_user_follows) + "';")
+		for row in cur.fetchall():
+			total_list += row[0]
+	total_list = list(set(total_list.split(",")))
+	query = "SELECT `Post_ID`,`Poster`, `Time_Of_Posting`, `Post_Contents`, `privacy_settings` FROM `Posts` WHERE "
+	for user in total_list:
+		if user and not user == username:
+			query += "`Poster` = '" + sql_validate(user) + "' OR "
+	query = query[0:-3]
+	query += "ORDER BY `Time_Of_Posting` DESC;"
+	if total_list == ['']:
+		rows = [[0,"",0,"",0]]
+	else:
+		cur.execute(query)
+		rows = cur.fetchall()
+	return rows
 try:
 	username = args[0]
 	if len(d["pbwm"]) >= 1:
@@ -393,8 +416,13 @@ try:
 except:
 	username = False
 	render = ["login_page"]
-
-
+try:
+	page = 1
+	for argument in args:
+		if argument == "page":
+			page = args[args.index(argument)+1]
+except:
+	page = 1
 try:
 	postpass = d['postpass']
 	postuser = d['postuser']
@@ -655,9 +683,17 @@ elif username and ("redirect_to_dashboard" not in render):
 									render.append("error_profile_change_error")
 							elif args[3] == "profile_picture_change":
 								try:
-									if len(d['file']) < 1048576:
-										pass
-										# todo
+									if len(d['file']) < 524276:
+										cur.execute("UPDATE `Profile_pictures` SET `Data` = '" + sql_validate(base64.b64encode(d['file'])) + "' WHERE `Username` = '" + sql_validate(username) + "';")
+										temporary_file = open("/tmp/"+username,'w')
+										temporary_file.write(d["file"])
+										temporary_file.close()
+										type = imghdr.what("/tmp/"+username)
+										if not type in ['gif','png','tiff','jpeg','bmp']:
+											render.append("unsupported filetype")
+										else:
+											cur.execute("UPDATE `Profile_pictures` SET `type` = '" + sql_validate(type) + "' WHERE `Username` = '" + sql_validate(username) + "';")
+										os.remove("/tmp/"+username)
 									else:
 										render.append("file_too_large")
 								except:
@@ -927,47 +963,52 @@ elif username and ("redirect_to_dashboard" not in render):
 								render.append("execute_post_bad_privacy_settings")
 								render.append("new_post_form")
 							else:
-								new_post_data = ""
-								in_quotes = False
-								users_to_recieve_notifications = []
-								for word in execute_post_post_data.split(" "):
-									if in_quotes:
-										user_to_link_to += word + " "
-										if user_to_link_to[-2] == quote_style:
-											in_quotes = False
-											user_to_link_to = user_to_link_to[0:-2]
-											word = "[" + user_to_link_to + "](" + root_dir + "SPECIAL:args[0]/SPECIAL:args[1]/profile/"+base64.urlsafe_b64encode(user_to_link_to)+")"
-											users_to_recieve_notifications.append(user_to_link_to)
-										else:
-											continue
-									elif word[0] == "#":
-										word = "["+word+"]("+root_dir+"SPECIAL:args[0]/SPECIAL:args[1]/hashtag_search/"+get_variable_character+"hashtag_to_search="+word[1:]+")"
-									elif word[0] == "@":
-										if word[1] == '"' or word[1] == "'":
-											quote_style = word[1]
-											if quote_style == word[-1]:
-												users_to_recieve_notifications.append(word[2:-1])
-												word = "[" + word[2:-1] + "](" + root_dir + "SPECIAL:args[0]/SPECIAL:args[1]/profile/"+base64.urlsafe_b64encode(word[2:-1])+")"
+								cur.execute("SELECT `Time_Of_Posting` FROM `Posts` WHERE `Poster` = '" + sql_validate(username) + "' ORDER BY `Time_Of_Posting` DESC LIMIT 1;")
+								time_of_last_post = cur.fetchone()[0]
+								if time.time() - time_of_last_post < 30:
+									render.append("new_post_throttled")
+								else:
+									new_post_data = ""
+									in_quotes = False
+									users_to_recieve_notifications = []
+									for word in execute_post_post_data.split(" "):
+										if in_quotes:
+											user_to_link_to += word + " "
+											if user_to_link_to[-2] == quote_style:
+												in_quotes = False
+												user_to_link_to = user_to_link_to[0:-2]
+												word = "[" + user_to_link_to + "](" + root_dir + "SPECIAL:args[0]/SPECIAL:args[1]/profile/"+base64.urlsafe_b64encode(user_to_link_to)+")"
+												users_to_recieve_notifications.append(user_to_link_to)
 											else:
-												in_quotes = True
-												user_to_link_to = word[2:] + " "
 												continue
-										else:
-											users_to_recieve_notifications.append(word[1:])
-											word = "[" + word[1:] + "](" + root_dir + "SPECIAL:args[0]/SPECIAL:args[1]/profile/"+base64.urlsafe_b64encode(word[1:])+")"
+										elif word[0] == "#":
+											word = "["+word+"]("+root_dir+"SPECIAL:args[0]/SPECIAL:args[1]/hashtag_search/"+get_variable_character+"hashtag_to_search="+word[1:]+")"
+										elif word[0] == "@":
+											if word[1] == '"' or word[1] == "'":
+												quote_style = word[1]
+												if quote_style == word[-1]:
+													users_to_recieve_notifications.append(word[2:-1])
+													word = "[" + word[2:-1] + "](" + root_dir + "SPECIAL:args[0]/SPECIAL:args[1]/profile/"+base64.urlsafe_b64encode(word[2:-1])+")"
+												else:
+													in_quotes = True
+													user_to_link_to = word[2:] + " "
+													continue
+											else:
+												users_to_recieve_notifications.append(word[1:])
+												word = "[" + word[1:] + "](" + root_dir + "SPECIAL:args[0]/SPECIAL:args[1]/profile/"+base64.urlsafe_b64encode(word[1:])+")"
 
 
-									new_post_data += word + " "
-								users_to_recieve_notifications = set(users_to_recieve_notifications)
-								users_to_recieve_notifications = list(users_to_recieve_notifications)
-								render.append("debug")
-								debug = users_to_recieve_notifications
-								for user in users_to_recieve_notifications:
-									if check_if_user_exists(user):
-										send_email_to_user(user,username + " mentioned you in a post!","Post data follows.<br /><br />" + replace_specials(newline_to_br(new_post_data)))
-								new_post_data = new_post_data[0:-1]
-								cur.execute("INSERT INTO `Posts` (`Poster`, `Time_Of_Posting`, `Post_Contents`, `privacy_settings`, `Likes_This`) VALUES ('"+sql_validate(username)+"', '"+str(int(time.time()))+"', '"+sql_validate(new_post_data)+" ','"+sql_validate(str(execute_post_permissions))+"', ',');")
-								render.append("posted_successfuly")
+										new_post_data += word + " "
+									users_to_recieve_notifications = set(users_to_recieve_notifications)
+									users_to_recieve_notifications = list(users_to_recieve_notifications)
+									render.append("debug")
+									debug = users_to_recieve_notifications
+									for user in users_to_recieve_notifications:
+										if check_if_user_exists(user):
+											send_email_to_user(user,username + " mentioned you in a post!","Post data follows.<br /><br />" + replace_specials(newline_to_br(new_post_data)))
+									new_post_data = new_post_data[0:-1]
+									cur.execute("INSERT INTO `Posts` (`Poster`, `Time_Of_Posting`, `Post_Contents`, `privacy_settings`, `Likes_This`) VALUES ('"+sql_validate(username)+"', '"+str(int(time.time()))+"', '"+sql_validate(new_post_data)+" ','"+sql_validate(str(execute_post_permissions))+"', ',');")
+									render.append("posted_successfuly")
 								render.append("profile_page")
 								profile_user = username
 						except:
@@ -1388,7 +1429,12 @@ else:
 						if (clientmsg.substring(0,8) == "/banlist") {
 							window.location.replace(${'"' + root_dir + args[0] + "/" + args[1] + "/chat/banlist/" + chat_channel + '"'})
 						} else if (clientmsg.substring(0,9) == "/channel ") {
-							window.location.replace(${'"' + root_dir + args[0] + "/" + args[1] + "/chat/" + '"'}.concat(clientmsg.substring(10)))
+							if (clientmsg.substring(0,1) == "#") {
+								newchannel = clientmsg.substring(10);
+							} else {
+								newchannel = clientmsg.substring(9);
+							}
+							window.location.replace(${'"' + root_dir + args[0] + "/" + args[1] + "/chat/" + '"'}.concat(newchannel)
 						} else {
 							$.post(${'"' + root_dir + args[0] + "/" + args[1] + "/chat/post_message" + '"'}, {text: clientmsg, channel: ${'"' + chat_channel + '"'} });
 							$("#usermsg").attr("value", "");
@@ -1532,6 +1578,9 @@ else:
 			<% return %>
 		% endif
 		<div class="message_box">
+			% if "new_post_throttled" in render:
+				<span class="warning">You are posting too fast</span>
+			% endif
 			% if "email_notification_settings_changed_successfully" in render:
 				<span class="success">Successfully changed your email notification settings</span>
 			% endif
@@ -1848,33 +1897,9 @@ else:
 					<br />
 					<div class="newsfeed">
 						<%
-							total_list = currently_following
+							rows = get_recent_posts()
 						%>
-						% for person_user_follows in currently_following.split(","):
-							<%
-								cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(person_user_follows) + "';")
-							%>
-							% for row in cur.fetchall():
-								<%
-									total_list += row[0]
-								%>
-							% endfor
-						% endfor
-						<%
-							total_list = list(set(total_list.split(",")))
-							query = "SELECT `Post_ID`,`Poster`, `Time_Of_Posting`, `Post_Contents`, `privacy_settings` FROM `Posts` WHERE "
-							for user in total_list:
-								if user and not user == username:
-									query += "`Poster` = '" + sql_validate(user) + "' OR "
-							query = query[0:-3]
-							query += "ORDER BY `Time_Of_Posting` DESC LIMIT 10;"
-							if total_list == ['']:
-								rows = [[0,"",0,"",0]]
-							else:
-								cur.execute(query)
-								rows = cur.fetchall()
-						%>
-						% for row in rows:
+						% for row in rows[0:5]:
 							<%
 								render_post = False
 								if username == row[1]:
@@ -2512,41 +2537,34 @@ else:
 			% if "dashboard" in render:
 				<h3>Welcome <a class="user_header" href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(username) + '"'}>${username}</a>!</h3>
 				<h3>You last logged in at ${time.strftime('%A, %B %d, %Y %H:%M:%S', time.localtime(int(last_login_time)))} from ${last_login_address}</h3>
-				<a href="${root_dir}${args[0]}/${args[1]}/messages">
+				<h4><a href="${root_dir}${args[0]}/${args[1]}/messages">
 				<%
 					x = get_number_of_unread_messages(username)
 				%>
 				% if x != 1:
 					You have ${x} unread messages
 				% else:
-					You have ${x} unread message
+					You have 1 unread message
 				% endif
-				</a>
-				% for poster_to_get in currently_following.split(","):
-					% if poster_to_get:
-						<h3><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(poster_to_get) + '"'} class="user_header">${poster_to_get}</a></h3>
-						<%
-							cur.execute("SELECT `Post_ID`,`Poster`,`Time_Of_Posting`,`Post_Contents`,`privacy_settings` FROM `Posts` WHERE `Poster` = '" + sql_validate(poster_to_get) + "' ORDER BY `Post_ID` DESC LIMIT 3;")
-						%>
-						% for row in cur.fetchall():
-							<%
-								render_post = False
-								if username == row[1]:
+				</a></h4>
+				<br />
+				% for row in get_recent_posts():
+					<%
+						render_post = False
+						if username == row[1]:
+							render_post = True
+						elif int(row[4]) == 3:
+							render_post = True
+						elif int(row[4]) == 1:
+							cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(row[1])+"';")
+							for subrow in cur.fetchall():
+								if "," + username + "," in subrow[0]:
 									render_post = True
-								elif int(row[4]) == 3:
-									render_post = True
-								elif int(row[4]) == 1:
-									cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(row[1])+"';")
-									for subrow in cur.fetchall():
-										if "," + username + "," in subrow[0]:
-											render_post = True
-										break
-							%>
-							% if render_post:
-								${render_post_function(row[0],row[1],row[2],row[3],row[4],)}
-								<br />
-							% endif
-						% endfor
+								break
+					%>
+					% if render_post:
+						${render_post_function(row[0],row[1],row[2],row[3],row[4])}
+						<br />
 					% endif
 				% endfor
 			% endif
