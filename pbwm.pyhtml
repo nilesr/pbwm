@@ -684,14 +684,14 @@ elif username and ("redirect_to_dashboard" not in render):
 							elif args[3] == "profile_picture_change":
 								try:
 									if len(d['file']) < 524276:
-										cur.execute("UPDATE `Profile_pictures` SET `Data` = '" + sql_validate(base64.b64encode(d['file'])) + "' WHERE `Username` = '" + sql_validate(username) + "';")
 										temporary_file = open("/tmp/"+username,'w')
 										temporary_file.write(d["file"])
 										temporary_file.close()
 										type = imghdr.what("/tmp/"+username)
 										if not type in ['gif','png','tiff','jpeg','bmp']:
-											render.append("unsupported filetype")
+											render.append("unsupported_filetype")
 										else:
+											cur.execute("UPDATE `Profile_pictures` SET `Data` = '" + sql_validate(base64.b64encode(d['file'])) + "' WHERE `Username` = '" + sql_validate(username) + "';")
 											cur.execute("UPDATE `Profile_pictures` SET `type` = '" + sql_validate(type) + "' WHERE `Username` = '" + sql_validate(username) + "';")
 										os.remove("/tmp/"+username)
 									else:
@@ -1578,6 +1578,9 @@ else:
 			<% return %>
 		% endif
 		<div class="message_box">
+			% if "unsupported_filetype" in render:
+				<span class="error">That filetype is unknown or unsupported</span>
+			% endif
 			% if "new_post_throttled" in render:
 				<span class="warning">You are posting too fast</span>
 			% endif
