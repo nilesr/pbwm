@@ -2,13 +2,66 @@
 #TODO
 #	Multiple pages
 #	Not logged in searching and viewing of profiles, posts and comments
-#	API
+#	Extend the API
 import sys
 sys.path.append("/usr/local/lib/python2.7/site-packages/")
 sys.path.append("/usr/local/Cellar/python/2.7.6/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages/PyMySQL-0.6.1-py2.7.egg")
-import os, hashlib, random, base64, time, pymysql, traceback, re, markdown2, smtplib, imghdr
+import os, hashlib, random, base64, time, pymysql, traceback, re, markdown2, smtplib, imghdr, math, copy
 from email.mime.text import MIMEText
 %>
+<%def name="page_navigation(total)">
+	<div id="navigation">
+		% if page == 1:
+			&lt;&lt; &lt;
+		% else:
+			<%
+				arguments = copy.deepcopy(args)
+				# We don't need a try block here because we already did it at the load of the page, and it would have set page to 1 if it weren't able to parse it correctly.
+				for x in arguments:
+					if x == "page":
+						arguments[arguments.index(x)+1] = "1"
+			%>
+			<a href="${root_dir + '/'.join(arguments)}">&lt;&lt;</a>
+			<%
+				arguments = copy.deepcopy(args)
+				for x in arguments:
+					if x == "page":
+						arguments[arguments.index(x)+1] = str(int(page-1))
+			%>
+			<a href="${root_dir + '/'.join(arguments)}">&lt;</a>
+		% endif
+		Page ${page} of ${str(int(math.ceil(total/things_per_page)))}
+		% if math.ceil(total/things_per_page) == page:
+			&gt; &gt;&gt;
+		% else:
+			<%
+				arguments = copy.deepcopy(args)
+				changed = False
+				for x in arguments:
+					if x == "page":
+						arguments[arguments.index(x)+1] = str(int(page+1))
+						changed = True
+				if not changed:
+					arguments.append("page")
+					arguments.append("2")
+			%>
+			<a href="${root_dir + '/'.join(arguments)}">&gt;</a>
+			<%
+				changed = False
+				arguments = copy.deepcopy(args)
+				for x in arguments:
+					if x == "page":
+						arguments[arguments.index(x)+1] = str(int(math.ceil(total/things_per_page)))
+						changed = True
+				if not changed:
+					arguments.append("page")
+					arguments.append(str(int(math.ceil(total/things_per_page))))
+			%>
+			<a href="${root_dir + '/'.join(arguments)}">&gt;&gt;</a>
+		% endif
+	</div>
+		
+</%def>
 <%def name="generate_table_of_messages(list_of_stuff)">
 	<table class="table">
 		<thead>
@@ -169,7 +222,8 @@ pbwm_dir = "/"
 get_variable_character = "?"
 #get_variable_character = "&"
 chatbox_type = "polling"
-
+#things_per_page = 15
+things_per_page = 1
 def sql_validate(stuff):
 #	return re.sub("'","\\'",stuff)
 	return conn.escape_string(stuff)
@@ -425,8 +479,10 @@ try:
 	page = 1
 	for argument in args:
 		if argument == "page":
-			page = args[args.index(argument)+1]
+			page = int(args[args.index(argument)+1])
 except:
+	page = 1
+if page < 1:
 	page = 1
 try:
 	postpass = d['postpass']
@@ -819,14 +875,17 @@ elif username and ("redirect_to_dashboard" not in render):
 						search_results = []
 						try:
 							search_string = d['post_search_string']
+							render.append("general_redirect")
+							general_redirect = root_dir+args[0]+"/"+args[1]+"/search/"+base64.urlsafe_b64encode(search_string)
 						except:
 							try:
-								search_string = base64.urlsafe_b64decode(args[3])
+								if not args[3] == "page":
+									search_string = base64.urlsafe_b64decode(args[3])
 							except:
 								pass
 						if search_string == "":
 							render.append("search_results")
-							cur.execute("SELECT `Username` FROM `users` ORDER BY `Username` ASC LIMIT 50;")
+							cur.execute("SELECT `Username` FROM `users` ORDER BY `Username` ASC;")
 							search_results = []
 							for row in cur.fetchall():
 								search_results += row
@@ -1837,7 +1896,7 @@ else:
 				<span class="warning">Illegal comma in username</span>
 			% endif
 			% if "register_success" in render:
-				<span class="success">Registration was successful</span>
+				<span class="warning">Registration pending, check your email</span>
 			% endif
 			% if "invalid_username" in render:
 				<span class="error">Invalid username</span>
@@ -1884,7 +1943,7 @@ else:
 						<li><a href="${root_dir}${args[0]+"/"+args[1]}/new_post">New post</a></li>
 						<li><a href="${root_dir}${args[0]+"/"+args[1]}/search">Look for users</a></li>
 						<li><a href="${root_dir}${args[0]+"/"+args[1]}/search_for_posts">Search posts</a></li>
-						<li><a href="${root_dir}${args[0]+"/"+args[1]}/hashtag_search">Search posts by hashtag</a></li>
+						<!--<li><a href="${root_dir}${args[0]+"/"+args[1]}/hashtag_search">Search posts by hashtag</a></li>-->
 						<li><a href="${root_dir}${args[0]+"/"+args[1]}/messages">Messages</a></li>
 						<li><a href="${root_dir}${args[0]+"/"+args[1]}/chat">Chat</a></li>
 						<li><a href="${root_dir}${args[0]+"/"+args[1]}/settings">Settings</a></li>
@@ -1914,7 +1973,7 @@ else:
 									render_post = True
 								elif int(row[4]) == 1:
 									cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(row[1])+"';")
-									for subrow in cur:
+									for subrow in cur.fetchall():
 										if "," + username + "," in subrow[0]:
 											render_post = True
 							%>
@@ -2034,7 +2093,9 @@ else:
 			% if "list_of_online_users" in render:
 				<h3>List of online users</h3>
 				<%
-					cur.execute("SELECT `Username`,`Timestamp` FROM `sessions`;")
+					cur.execute("SELECT COUNT(*) FROM `sessions` WHERE `Timestamp` > "+str(int(time.time())-420)+";")
+					totalResults = cur.fetchone()[0]
+					cur.execute("SELECT `Username`,`Timestamp` FROM `sessions` LIMIT "+str(things_per_page)+" OFFSET "+str(things_per_page*(page-1))+";")
 					users = []
 					for row in cur.fetchall():
 						if int(row[1]) > time.time()-420:
@@ -2053,6 +2114,7 @@ else:
 							% endfor
 						</tbody>
 					</table>
+					${page_navigation(totalResults)}
 				% endif
 			% endif
 			% if "private_policy" in render:
@@ -2064,14 +2126,19 @@ else:
 						<tr><td></td><td>Chat banlist for ${chat_channel | h}</td></tr>
 					</thead>
 					<tbody>
-						<% cur.execute("SELECT `channel_banlist` FROM `Chat_channels` WHERE `channel_name` = '"+sql_validate(chat_channel)+"';") %>
-						% for user in cur.fetchone()[0].split(","):
+						<%
+							cur.execute("SELECT `channel_banlist` FROM `Chat_channels` WHERE `channel_name` = '"+sql_validate(chat_channel)+"';")
+							allUsers = cur.fetchone()[0].split(",")[1:-1]
+							users = allUsers[(page-1)*things_per_page:page*things_per_page]
+						%>
+						% for user in users:
 							% if user:
 								<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(user) + '"'}>${user}</a></tr></td>
 							% endif
 						% endfor
 					</tbody>
 				</table>
+				${page_navigation(len(allUsers))}
 			% endif
 			% if "chat_url" in render:
 				<h3>Welcome to ${"#" + chat_channel | h}</h3>
@@ -2200,8 +2267,11 @@ else:
 				<h3>Results for ${string_to_search_for}</h3>
 				<%
 					cur.execute("SELECT `Post_ID`,`Poster`, `Time_Of_Posting`, `Post_Contents`, `privacy_settings` FROM `Posts` WHERE `Post_Contents` LIKE '%" + sql_validate(string_to_search_for) + "%' ORDER BY `Time_Of_Posting` DESC;")
+					rows = cur.fetchall()
+					TotalResults = len(rows)
+					rows = rows[(page-1)*things_per_page:page*things_per_page]
 				%>
-				% for row in cur.fetchall():
+				% for row in rows:
 					<%
 						render_post = False
 						if username == row[1]:
@@ -2219,6 +2289,7 @@ else:
 					% endif
 					<br />
 				% endfor
+				${page_navigation(TotalResults)}
 			% endif
 			% if "view_post_not_logged_in" in render:
 				<%
@@ -2256,9 +2327,12 @@ else:
 						% if "view_comments" in render:
 							<%
 								cur.execute("SELECT `Post_ID`, `Poster`, `Post_time`, `Comment_data`, `Likes_this` FROM `Comments` WHERE `Parent_post_id` = '" + sql_validate(str(row[0])) + "' ORDER BY `Post_time` DESC;")
+								rows = cur.fetchall()
+								total = len(rows)
+								rows = rows[(page-1)*things_per_page:page*things_per_page]
 							%>
 							<h3>Comments</h3>
-							% for subrow in cur.fetchall():
+							% for subrow in rows:
 								Posted by: <span class="post_poster"><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(str(subrow[1])) + '"'}>${subrow[1]}</a></span><br />
 								Posted at: <span class="post_time">${time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(subrow[2])))}</span><br />
 								% if username == subrow[1]:
@@ -2286,6 +2360,7 @@ else:
 								<textarea rows="6" cols="80" name="new_comment_comment_data">Enter your new comment here</textarea><br />
 								<input type="submit" value="Submit">
 							</form>
+							${page_navigation(total)}
 						% endif
 					% endif
 
@@ -2302,8 +2377,11 @@ else:
 				<h3>Search results</h3>
 				<%
 					cur.execute("SELECT `Post_ID`,`Poster`, `Time_Of_Posting`, `Post_Contents`, `privacy_settings` FROM `Posts` WHERE `Post_Contents` LIKE '%#"+sql_validate(search_query)+"%' ORDER BY `Time_Of_Posting` DESC;")
+					rows = cur.fetchall()
+					total = len(rows)
+					rows = rows[(page-1)*things_per_page:page*things_per_page]
 				%>
-				% for row in cur.fetchall():
+				% for row in rows:
 					<%
 						render_post = False
 						if username == row[1]:
@@ -2322,6 +2400,7 @@ else:
 						<br />
 					% endif
 				% endfor
+				${page_navigation(total)}
 			% endif
 			% if "new_post_form" in render:
 				<h3>Make a new post</h3>
@@ -2369,7 +2448,11 @@ else:
 				</form>
 			% endif
 			% if "search_results" in render:
-				% if len(search_results) != 1:
+				<%
+					total = len(search_results)
+					search_results = search_results[(page-1)*things_per_page:page*things_per_page]
+				%>
+				% if total != 1:
 					<h3>Found ${len(search_results)} results</h3>
 				% else:
 					<h3>Found ${len(search_results)} result</h3>
@@ -2386,6 +2469,7 @@ else:
 						</tr>
 					% endfor
 				</table>
+				${page_navigation(total)}
 			% endif
 			% if "profile_page" in render:
 				${get_profile_picture(profile_user,["profile_picture"])}
@@ -2474,8 +2558,11 @@ else:
 				% endif
 				<%
 					cur.execute("SELECT `Post_ID`,`Poster`,`Time_Of_Posting`,`Post_Contents`,`privacy_settings` FROM `Posts` WHERE `Poster` = '" + sql_validate(profile_user) + "' ORDER BY `Post_ID` DESC;")
+					rows = cur.fetchall()
+					total = len(rows)
+					rows = rows[(page-1)*things_per_page:page*things_per_page]
 				%>
-				% for row in cur.fetchall():
+				% for row in rows:
 					<%
 						render_post = False
 						if username == row[1]:
@@ -2494,6 +2581,7 @@ else:
 						<hr /><br />
 					% endif
 				% endfor
+				${page_navigation(total)}
 			% endif
 			% if "delete_user_form" in render:
 				<h3>Delete a user account</h3>
