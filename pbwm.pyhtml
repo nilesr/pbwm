@@ -180,6 +180,10 @@ except:
 	render.append("general_redirect")
 	general_redirect = root_dir
 css = pbwm_dir + "pbwm_static/themes/blue.css"
+try:
+	css = pbwm_dir + "pbwm_static/themes/"+d["css"]+".css"
+except:
+	pass
 debug = False#			debug = traceback.format_exc()
 general_redirect = False
 conn = pymysql.connect(host="127.0.0.1", port=3306, user="pbwm", passwd='', db="pbwm")
@@ -200,14 +204,15 @@ def get_profile_picture(user,classes):
 		return
 	cur.execute("SELECT `type`,`Data` FROM `Profile_pictures` WHERE `Username` = '"+sql_validate(user)+"';")
 	row = cur.fetchone()
+	if not row:
+		return
 	profile_user_image_type = row[0]
 	profile_user_image_data = row[1]
-	image_classes = classes
 	if get_permissions(user)['profile_picture_has_border'] == 1:
-		image_classes += ["admin_profile_picture"]
-	if profile_user_image_type:
-		return "<img class=\""+" ".join(image_classes)+"\" src=data:image/"+ profile_user_image_type + ";base64," + profile_user_image_data + ' />'
-	return "<img class=\""+" ".join(image_classes)+"\" src=" + '"' + pbwm_dir + "pbwm_static/default.png" + '"' + " />"
+		classes += ["admin_profile_picture"]
+	if profile_user_image_type == "None":
+		return "<img class=\""+" ".join(classes)+"\" src=" + '"' + pbwm_dir + "pbwm_static/default.png" + '"' + " />"
+	return "<img class=\""+" ".join(classes)+"\" src=data:image/"+ profile_user_image_type + ";base64," + profile_user_image_data + ' />'
 def replace_specials(stuff):
 	return stuff.replace("SPECIAL:args[0]",args[0]).replace("SPECIAL:args[1]",args[1])
 def check_if_valid_email(stuff):
@@ -225,6 +230,7 @@ def send_email_to_user(user,subject,missive,isemail = False,sendanyways = False)
 			break
 	else:
 		email_to_send_to = user
+		send_notification_emails = "0"
 		emails_sent = 0
 	if send_notification_emails == "1":
 		emails_sent = 4
@@ -248,7 +254,6 @@ def send_email_to_user(user,subject,missive,isemail = False,sendanyways = False)
 	s.login("pyblogwithme@gmail.com","pass-pbwm")
 	s.sendmail("PyBlogWithMe@" + fully_qualified_domain_name, [email_to_send_to], msg.as_string())
 	s.quit()
-
 
 def shorten_to_reasonable_length(stuff,length):
 	if len(stuff) > length:
@@ -466,20 +471,20 @@ elif username == "register_step_two":
 			register_token = args[1]
 			cur.execute("SELECT `Token` from `PendingUsers` WHERE `Token` = '" + sql_validate(register_token) + "' ;")
 			for row in cur.fetchall():
-				if register_token == row[0]:
+				if register_token == row[0]:	
 					if "," in d['reguser']:
 						render = ["register_comma_error","register_page"]
-						cur.execute("TRUNCATE TABLE `PendingUsers`;")
+						cur.execute("DELETE FROM `PendingUsers` WHERE `Token` = '" + register_token + "';")
 					elif not check_if_valid_email(d['regemail']):
 						render = ["error_invalid_email","register_page"]
-						cur.execute("TRUNCATE TABLE `PendingUsers`;")
+						cur.execute("DELETE FROM `PendingUsers` WHERE `Token` = '" + register_token + "';")
 					else:
 						email_validation_token = base64.urlsafe_b64encode(os.urandom(50))
 						salt = base64.urlsafe_b64encode(os.urandom(128))
-						send_email_to_user(d['regemail'],d['reguser'] + ", please validate email address","Your email validation link is below.<br /><a href=\""+url_scheme+"://" + fully_qualified_domain_name + root_dir + "register_step_three/" + email_validation_token + "\">"+ fully_qualified_domain_name + root_dir + "register_step_three/" + email_validation_token +"</a>", isemail=True)
+						send_email_to_user(d['regemail'],d['reguser'] + ", please validate your email address","Your email validation link is below.<br /><a href=\""+url_scheme+"://" + fully_qualified_domain_name + root_dir + "register_step_three/" + email_validation_token + "\">"+ fully_qualified_domain_name + root_dir + "register_step_three/" + email_validation_token +"</a>", isemail=True)
 						cur.execute("INSERT INTO `Pending_email_validation` (`Username`,`Password`,`Salt`,`Email`,`Registration_key`) VALUES('" + sql_validate(d['reguser']) + "','" + hashlib.sha512(sql_validate(d['regpass'] + salt)).hexdigest() + "','" + salt + "','" + sql_validate(d['regemail']) + "','"+email_validation_token+"');")
 						render = ["register_success","login_page"]
-						cur.execute("TRUNCATE TABLE `PendingUsers`;")
+						cur.execute("DELETE FROM `PendingUsers` WHERE `Token` = '" + register_token + "';")
 				else:
 					render = ["register_token_error","register_page"]
 				break
@@ -488,17 +493,16 @@ elif username == "register_step_two":
 elif username == "register_step_three":
 	try:
 		cur.execute("SELECT `Username`, `Password`, `Salt`, `Email` FROM `Pending_email_validation` WHERE `Registration_key` = '" + sql_validate(args[1]) + "';")
-		for row in cur.fetchall():
-			cur.execute("INSERT INTO `users` (`Username`,`Password`,`Salt`,`Email`) VALUES('" + sql_validate(row[0]) + "','" + row[1] + "','" + row[2] + "','" + sql_validate(row[3]) + "');")
-			cur.execute("INSERT INTO `permissions` (`Username`) VALUES('"+sql_validate(row[0])+"');")
-			cur.execute("INSERT INTO `settings` (`Username`,`css_theme`) VALUES('"+sql_validate(row[0])+"','green');")
-			cur.execute("INSERT INTO `Profiles` (`Username`,`Profile`) VALUES('"+sql_validate(row[0])+"','This is the default \"About Me\" page');")
-			cur.execute("INSERT INTO `Private_Messages` (`To`,`From`,`Missive`,`Timestamp`) VALUES('"+sql_validate(row[0])+"','Mailer Daemon', 'Welcome to PyBlogWithMe, "+sql_validate(row[0])+"','"+str(int(time.time()))+"');")
-			cur.execute("INSERT INTO `Login_Logs` (`Username`,`Time`,`IP_Address`) VALUES('"+sql_validate(row[0])+"','"+str(time.time())+"','"+environ["REMOTE_HOST"]+"');")
-			cur.execute("INSERT INTO `Following` (`Username`,`Follows`) VALUES('"+sql_validate(row[0])+"',',');")
-			cur.execute("INSERT INTO `Profile_pictures` (`type`,`Username`) VALUES('"+sql_validate(row[0])+"','png');")
-			cur.execute("DELETE FROM `Pending_email_validation` WHERE `Registration_key` = '" + sql_validate(args[1]) + "';") 
-			break
+		row = cur.fetchone()
+		cur.execute("INSERT INTO `users` (`Username`,`Password`,`Salt`,`Email`) VALUES('" + sql_validate(row[0]) + "','" + row[1] + "','" + row[2] + "','" + sql_validate(row[3]) + "');")
+		cur.execute("INSERT INTO `permissions` (`Username`) VALUES('"+sql_validate(row[0])+"');")
+		cur.execute("INSERT INTO `settings` (`Username`,`css_theme`) VALUES('"+sql_validate(row[0])+"','green');")
+		cur.execute("INSERT INTO `Profiles` (`Username`,`Profile`) VALUES('"+sql_validate(row[0])+"','This is the default \"About Me\" page');")
+		cur.execute("INSERT INTO `Private_Messages` (`To`,`From`,`Missive`,`Timestamp`) VALUES('"+sql_validate(row[0])+"','Mailer Daemon', 'Welcome to PyBlogWithMe, "+sql_validate(row[0])+"','"+str(int(time.time()))+"');")
+		cur.execute("INSERT INTO `Login_Logs` (`Username`,`Time`,`IP_Address`) VALUES('"+sql_validate(row[0])+"','"+str(time.time())+"','"+environ["REMOTE_ADDR"]+"');")
+		cur.execute("INSERT INTO `Following` (`Username`,`Follows`) VALUES('"+sql_validate(row[0])+"',',');")
+		cur.execute("INSERT INTO `Profile_pictures` (`type`,`Username`) VALUES('None','"+sql_validate(row[0])+"');")
+		cur.execute("DELETE FROM `Pending_email_validation` WHERE `Registration_key` = '" + sql_validate(args[1]) + "';") 
 		render = ["email_validation_success","login_page"]
 	except:
 		render = ["email_validation_unknown_error","login_page"]
@@ -577,7 +581,7 @@ elif username and ("redirect_to_dashboard" not in render):
 					render.append("invalid_session")
 				break
 			if session_is_valid:
-#				cur.execute("UPDATE `sessions` SET `Timestamp`='" + sql_validate(str(int(time.time()))) + "' WHERE `Token` = '" + sql_validate(args[1]) + "';" )
+				cur.execute("UPDATE `sessions` SET `Timestamp`='" + sql_validate(str(int(time.time()))) + "' WHERE `Token` = '" + sql_validate(args[1]) + "';" )
 				cur.execute("UPDATE `users` SET `Emails_sent_since_last_login` = '0' WHERE `Username` = '"+sql_validate(username)+"';")
 				cur.execute("SELECT `Time`, `IP_Address` FROM `Login_Logs` WHERE `Username` = '" + sql_validate(username) + "';")
 				for row in cur.fetchall():
@@ -594,15 +598,18 @@ elif username and ("redirect_to_dashboard" not in render):
 					currently_following = row[0]
 					break
 				cur.execute("SELECT `css_is_custom`, `css_path`, `css_theme` FROM `settings` WHERE `Username` = '"+sql_validate(username)+"';")
-				for row in cur.fetchall():
-					css_is_custom = row[0]
-					css_path = row[1]
-					css_theme = row[2]
-					if int(css_is_custom) == 0:
-						css = pbwm_dir + "pbwm_static/themes/"+css_theme+".css"
-					else:
-						css = css_path
-					break
+				row = cur.fetchone()
+				css_is_custom = row[0]
+				css_path = row[1]
+				css_theme = row[2]
+				if int(css_is_custom) == 0:
+					css = pbwm_dir + "pbwm_static/themes/"+css_theme+".css"
+				else:
+					css = css_path
+				try:
+					css = pbwm_dir + "pbwm_static/themes/"+d["css"]+".css"
+				except:
+					pass
 				if check_if_user_exists(username):
 					permissions = get_permissions(username)
 					if permissions['can_view_administrative_panel'] == 1:
@@ -698,16 +705,12 @@ elif username and ("redirect_to_dashboard" not in render):
 										render.append("file_too_large")
 								except:
 									render.append("profile_picture_change_error")
-									render.append("debug")
-									debug = traceback.format_exc()
 							elif args[3] == "email_notification_change":
 								try:
 									cur.execute("UPDATE `users` SET `Send_notification_emails` = '" + sql_validate(d["new_email_notification_setting"]) + "' WHERE `Username` = '" + sql_validate(username) + "';")
 									render.append("email_notification_settings_changed_successfully")
 								except:
 									render.append("email_notification_settings_change_unknown_error")
-									render.append("debug")
-									debug = traceback.format_exc()
 							else:
 								render.append("unknown_command")
 						except:
@@ -814,8 +817,6 @@ elif username and ("redirect_to_dashboard" not in render):
 						render.append("search_form")
 						search_string = ""
 						search_results = []
-						render.append("debug")
-						debug = render
 						try:
 							search_string = d['post_search_string']
 						except:
@@ -1001,8 +1002,6 @@ elif username and ("redirect_to_dashboard" not in render):
 										new_post_data += word + " "
 									users_to_recieve_notifications = set(users_to_recieve_notifications)
 									users_to_recieve_notifications = list(users_to_recieve_notifications)
-									render.append("debug")
-									debug = users_to_recieve_notifications
 									for user in users_to_recieve_notifications:
 										if check_if_user_exists(user):
 											send_email_to_user(user,username + " mentioned you in a post!","Post data follows.<br /><br />" + replace_specials(newline_to_br(new_post_data)))
@@ -1311,7 +1310,6 @@ elif username and ("redirect_to_dashboard" not in render):
 										not_a_command = True
 										message_to_log = "<span class=\"chat_username\"><a style=\"color:"+user_chat_color+";\" href=" + '"' + root_dir + "SPECIAL:args[0]" + "/" + "SPECIAL:args[1]" + "/profile/" + base64.urlsafe_b64encode(username) + '"' + ">" + username + "</a></span>: " + newline_to_br(shorten_to_reasonable_length(passed_text,400))
 									if message_to_log:
-										
 										if chat_is_locked == 1 and not permissions['can_talk_through_lock'] == 1:
 											return
 										else:
@@ -1327,8 +1325,8 @@ elif username and ("redirect_to_dashboard" not in render):
 												if last_message_time:
 													if int(time.time()) - last_message_time <= 1:
 														return
-											bad = ['cunt', 'nigger', 'bitch', 'fuck', 'fag', 'faggot', ' kike', ' ass ', 'dumbass', 'smartass', ' i ', 'shit']
-											good = ['c***', '******', 'b**ch', 'f**k', '***', '******', ' respectable jewish person', ' *** ', 'dumb***', 'smart***', ' I ', 'sh*t']
+											bad = ['cunt', 'nigger', 'bitch', 'fuck', 'fag', 'faggot', ' kike ', ' ass ', 'dumbass', 'smartass', ' i ', 'shit']
+											good = ['c***', '******', 'b**ch', 'f**k', '***', '******', ' respectable jewish person ', ' *** ', 'dumb***', 'smart***', ' I ', 'sh*t']
 											for i in xrange(len(bad)):
 												message_to_log = message_to_log.replace(bad[i],good[i])
 											cur.execute("INSERT INTO `Chat_messages` (`Username`, `Timestamp`, `Message`, `Channel`, `Special_type`) VALUES ('"+sql_validate(username)+"','"+sql_validate(str(int(time.time())))+"','"+sql_validate(message_to_log)+"', '"+sql_validate(chat_channel)+"','"+sql_validate(str(message_special_type))+"');")
@@ -1337,8 +1335,8 @@ elif username and ("redirect_to_dashboard" not in render):
 										pass
 								except:
 									render.append("chat_unknown_error")
-									render.append("debug")
-									debug = traceback.format_exc()
+									#render.append("debug")
+									#debug = traceback.format_exc()
 							elif chat_action == "embedded":
 								render.append("chat_embedded")
 							elif chat_action == "banlist":
@@ -1434,7 +1432,7 @@ else:
 							} else {
 								newchannel = clientmsg.substring(9);
 							}
-							window.location.replace(${'"' + root_dir + args[0] + "/" + args[1] + "/chat/" + '"'}.concat(newchannel)
+							window.location.replace(${'"' + root_dir + args[0] + "/" + args[1] + "/chat/" + '"'}.concat(newchannel));
 						} else {
 							$.post(${'"' + root_dir + args[0] + "/" + args[1] + "/chat/post_message" + '"'}, {text: clientmsg, channel: ${'"' + chat_channel + '"'} });
 							$("#usermsg").attr("value", "");
@@ -1525,8 +1523,13 @@ else:
 				};
 			</script>
 		% endif
+		<script>
+			function FixShit() {
+				document.getElementById("body").removeAttribute("id");
+			}
+		</script>
 	</head>
-	<body>
+	<body id="body" onload='FixShit();'>
 		% if "chat_embedded" in render:
 			<div id="chatbox-inner">
 			<%
@@ -2031,10 +2034,11 @@ else:
 			% if "list_of_online_users" in render:
 				<h3>List of online users</h3>
 				<%
-					cur.execute("SELECT `Username` FROM `sessions` WHERE `Timestamp` > '"+str(int(time.time())-420)+"';")
+					cur.execute("SELECT `Username`,`Timestamp` FROM `sessions`;")
 					users = []
 					for row in cur.fetchall():
-						users += row
+						if int(row[1]) > time.time()-420:
+							users.append(row[0])
 				%>
 				% if users == []:
 					<h4>No users online in the last 7 minutes</h4>
@@ -2577,6 +2581,10 @@ else:
 					Theme? <select name="css_theme">
 						<option value="green">Green</option>
 						<option value="blue">Blue</option>
+						<option value="ok">Rammus</option>
+						<option value="ravenclaw">Ravenclaw</option>
+						<option value="craftsman">Craftsman</option>
+						<option value="slytherin">Slytherin</option>
 					</select><br />
 					Use custom CSS? <input type="checkbox" name="custom_css_enabled" value="custom_css_enabled"><br />
 					Custom CSS path, like /style.css or http://your.web.site.com/style.css: <input type="text" name="custom_css_path"><br />
@@ -2700,7 +2708,7 @@ else:
 				<br /><br />
 				<h3><a href="${root_dir}${args[0]+"/"+args[1]}/messages/send_form">Send a message</a></h3>
 				<h3><a href="${root_dir}${args[0]+"/"+args[1]}/messages/view_sent">View your sent messages</a></h3>
-				<h3><a href="${root_dir}${args[0]+"/"+args[1]}/messages/undelete_everything">Do something annoying</a></h3>
+				<!--<h3><a href="${root_dir}${args[0]+"/"+args[1]}/messages/undelete_everything">Undelete all messages</a></h3>-->
 
 			% endif
 			% if "view_sent" in render:
@@ -2738,7 +2746,7 @@ else:
 			% endif
 
 		</div>
-		<div id="foot">Niles Rogoff 2014<br /><a href=${'"' + root_dir + "private_policy" + '"' } style="color:grey;font-weight:default;">Private Policy</a><br /><a href=${'"' + root_dir + "api" + '"' } style="color:grey;font-weight:default;">For developers</a></div>
+		<div class="foot">Niles Rogoff 2014<br /><a class="foot" href=${'"' + root_dir + "private_policy" + '"' } style="font-weight:default;">Private Policy</a><br /><a class="foot" href=${'"' + root_dir + "api" + '"' } style="font-weight:default;">For developers</a></div>
 	</body>
 </html>
 <%

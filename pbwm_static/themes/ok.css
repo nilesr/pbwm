@@ -1,14 +1,21 @@
 body {
 	text-align:left;
-	color:black;
-	background-color: #a6c5b7;
+	color:#f0ffdf;
+	background-color: #3a3a3a;
 	font-family:verdana,sans-serif
+}
+#body * {
+  -webkit-transition: none !important;
+  -moz-transition: none !important;
+  -ms-transition: none !important;
+  -o-transition: none !important;
 }
 .message_box {
 	margin-top:20px;
 	margin-left:10px;
 	text-align:center;
 	width:80%;
+	color:black;
 }
 .error {
 	background-color:pink;
@@ -16,7 +23,7 @@ body {
 	border-radius:8px;
 }
 .success {
-	background-color:lime;
+	background-color:green;
 	padding: 4px 10px 4px 4px;
 	border-radius:8px;
 }
@@ -31,11 +38,12 @@ body {
 }
 .sidebar {
 	position:fixed;
+	/*color:black;*/
 	top:25px;
 	left:80%;
 	width:20%;
-	background-color: white;
-	border: 1px solid #646464;
+	background-color: #586a89;
+	border: 1px solid #3a3a3a;
 }
 div.sidebar p {
 	margin-left:12px;
@@ -51,24 +59,24 @@ p {
 #hide {
 	display:none;
 }
-a, a:active, a:visited {
-	text-decoration: none;
-	color: blue;
+a {
 	-webkit-transition: 0.5s ease border, 1s ease border-radius, 0.5s ease color;
 	transition: 0.5s ease border, 1s ease border-radius, 0.5s ease color;
+}
+a, a:active, a:visited {
+	text-decoration: none;
+	color: #ffd390;
 	border-bottom-width: 0px;
 	border-bottom-style: solid;
-	border-bottom-color: red;
+	border-bottom-color: #ffd390;
 	border-bottom-right-radius: 0px;
 	border-bottom-left-radius: 0px;
 }
 a:hover, a:focus {
-	color: red;
-	-webkit-transition: 0.5s ease border, 1s ease border-radius, 0.5s ease color;
-	transition: 0.5s ease border, 1s ease border-radius, 0.5s ease color;
+	color: #FFDFF0;
 	border-bottom-width: 1px;
 	border-bottom-style: solid;
-	border-bottom-color: red;
+	border-bottom-color: #FFDFF0;
 	border-bottom-right-radius: 3px;
 	border-bottom-left-radius: 3px;
 }
@@ -76,6 +84,7 @@ a:hover, a:focus {
 	color:red;
 	font-weight:bold;
 }
+
 h2 {
 	margin-bottom: 12px;
 }
@@ -86,7 +95,7 @@ h3 {
 }
 #content {
 	font-family:monospace;
-	background-color: white;
+	background-color: #586a89;
 	border-top: 1px solid #646464;
 	border-bottom: 1px solid #646464;
 	padding-top: 10px;
@@ -94,6 +103,7 @@ h3 {
 	margin-left: 0px;
 	padding-left: 12px;
 	width:80%;
+	color:#f0ffdf;
 /*	overflow-x:scroll;*/
 
 }
@@ -121,7 +131,7 @@ h3 {
 }
 .table tbody tr:hover td
 {
-	color: #009;
+	color: #dff0ff;
 }
 .newsfeed {
 	font-size:0.5em;
@@ -167,4 +177,8 @@ h3 {
 }
 .admin_profile_picture {
 	border: 3px dashed red;
+}
+input {
+    border: 3px solid #3a3a3a; 
+    background: rgba(255,255,255,0.5);
 }
