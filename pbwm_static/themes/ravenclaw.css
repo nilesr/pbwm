@@ -38,7 +38,7 @@ body {
 }
 .sidebar {
 	position:fixed;
-	color:black;
+	color:lightgrey;
 	top:25px;
 	left:80%;
 	width:20%;
@@ -52,14 +52,12 @@ p {
 	padding-left:5%;
 	padding-right:10%;
 }
-div.sidebar a {
-	color:#1b6943;
-}
+
 a {
 	-webkit-transition: 0.5s ease border, 1s ease border-radius;
 	transition: 0.5s ease border, 1s ease border-radius;
 	text-decoration: none;
-	color:#1b6943;
+	color:#5f967b;
 }
 a, a:active, a:visited {
 	border-bottom-width: 0px;
@@ -82,6 +80,7 @@ a:hover, a:focus {
 
 h2 {
 	margin-bottom: 12px;
+	color: grey;
 }
 h3 {
 	margin-top:5px;
@@ -98,7 +97,7 @@ h3 {
 	margin-left: 0px;
 	padding-left: 12px;
 	width:80%;
-	color:black;
+	color:lightgrey;
 /*	overflow-x:scroll;*/
 
 }
