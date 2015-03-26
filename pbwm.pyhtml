@@ -75,7 +75,7 @@ from email.mime.text import MIMEText
 		<tbody>
 			% for id in list_of_stuff:
 				<%
-					From, Missive, Priority, Timestamp = get_message_by_id(username,id)
+					From, Missive, Priority, Timestamp, Read = get_message_by_id(username,id)
 				%>
 				<!--Mail id: ${id}-->
 				<tr>
@@ -99,7 +99,11 @@ from email.mime.text import MIMEText
 						% if len(Missive) > 100:
 							<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/view/" + base64.urlsafe_b64encode(str(id)) + '"'}>View full message</a> - 
 						% endif
-						<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/mark_as_read/" + base64.urlsafe_b64encode(str(id)) + '"'}>Mark as read</a> - 
+                        % if Read == 0:
+						    <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/mark_as_read/" + base64.urlsafe_b64encode(str(id)) + '"'}>Mark as read</a> - 
+                        % else:
+						    <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/mark_as_unread/" + base64.urlsafe_b64encode(str(id)) + '"'}>Mark as unread</a> - 
+                        % endif
 						<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/delete/" + base64.urlsafe_b64encode(str(id)) + '"'}>Delete</a>
 					</td>
 				</tr>
@@ -398,9 +402,9 @@ def rename_user(old,new):
 
 
 def get_message_by_id(username,id):
-	cur.execute("SELECT `From`, `Missive`, `Priority`, `Timestamp` FROM `Private_Messages` WHERE `Mail_ID` = '" + sql_validate(str(id)) + "' AND  ( `To` = '"+sql_validate(username)+"' OR `From` = '"+sql_validate(username)+"' );")
+	cur.execute("SELECT `From`, `Missive`, `Priority`, `Timestamp`, `Read` FROM `Private_Messages` WHERE `Mail_ID` = '" + sql_validate(str(id)) + "' AND  ( `To` = '"+sql_validate(username)+"' OR `From` = '"+sql_validate(username)+"' );")
 	row = cur.fetchone()
-	return [row[0],row[1],row[2],row[3]]
+	return row
 def get_number_of_unread_messages(username):
 	cur.execute("SELECT COUNT(`Mail_ID`) FROM `Private_Messages` WHERE `To` = '" + sql_validate(username) + "' AND `Read` = '0' AND `Deleted` = '0';")
 	return cur.fetchone()[0]
