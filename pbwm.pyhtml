@@ -935,7 +935,7 @@ elif username and ("redirect_to_dashboard" not in render):
 									mark_message_as_unread(username,base64.urlsafe_b64decode(args[4]))
 								elif messages_action == "view":
 									render.append("messages")
-									view_full_message_from, view_full_message_string, tempvar, timestamp = get_message_by_id(username,base64.urlsafe_b64decode(args[4]))
+									view_full_message_from, view_full_message_string, tempvar, timestamp, read = get_message_by_id(username,base64.urlsafe_b64decode(args[4]))
 									render.append("view_full_message")
 								elif messages_action == "send_form":
 									render.append("send_form")
