@@ -59,19 +59,19 @@ a {
 	-webkit-transition: 0.5s ease border, 1s ease border-radius;
 	transition: 0.5s ease border, 1s ease border-radius;
 	text-decoration: none;
-	color:#94b09e;
+	color:#FF9900;
 }
 a, a:active, a:visited {
 	border-bottom-width: 0px;
 	border-bottom-style: solid;
-	border-bottom-color: #94b09e;
+	border-bottom-color: #FF9900;
 	border-bottom-right-radius: 0px;
 	border-bottom-left-radius: 0px;
 }
 a:hover, a:focus {
 	border-bottom-width: 1px;
 	border-bottom-style: solid;
-	border-bottom-color: #94b09e;
+	border-bottom-color: #FF9900;
 	border-bottom-right-radius: 3px;
 	border-bottom-left-radius: 3px;
 }

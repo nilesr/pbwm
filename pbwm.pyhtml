@@ -5,7 +5,6 @@
 #	Extend the API
 import sys
 sys.path.append("/usr/local/lib/python2.7/site-packages/")
-sys.path.append("/usr/local/Cellar/python/2.7.6/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages/PyMySQL-0.6.1-py2.7.egg")
 import os, hashlib, random, base64, time, pymysql, traceback, re, markdown2, smtplib, imghdr, math, copy
 from email.mime.text import MIMEText
 %>
@@ -30,8 +29,14 @@ from email.mime.text import MIMEText
 			%>
 			<a href="${root_dir + '/'.join(arguments)}">&lt;</a>
 		% endif
-		Page ${page} of ${str(int(math.ceil(total/things_per_page)))}
-		% if math.ceil(total/things_per_page) == page:
+		<%
+			if int(math.ceil(total/things_per_page)) == 0:
+				totalpages = 1
+			else:
+				totalpages = int(math.ceil(total/things_per_page))
+		%>
+		Page ${page} of ${str(totalpages)}
+		% if totalpages == page:
 			&gt; &gt;&gt;
 		% else:
 			<%
@@ -222,8 +227,8 @@ pbwm_dir = "/"
 get_variable_character = "?"
 #get_variable_character = "&"
 chatbox_type = "polling"
-#things_per_page = 15
-things_per_page = 1
+things_per_page = 15
+#things_per_page = 1
 def sql_validate(stuff):
 #	return re.sub("'","\\'",stuff)
 	return conn.escape_string(stuff)
@@ -265,7 +270,10 @@ def get_profile_picture(user,classes):
 	if get_permissions(user)['profile_picture_has_border'] == 1:
 		classes += ["admin_profile_picture"]
 	if profile_user_image_type == "None":
-		return "<img class=\""+" ".join(classes)+"\" src=" + '"' + pbwm_dir + "pbwm_static/default.png" + '"' + " />"
+		if random.randint(1,10) == 1:
+			return "<img class=\""+" ".join(classes)+"\" src=" + '"' + pbwm_dir + "pbwm_static/default.png" + '"' + " />"
+		else:
+			return "<img class=\""+" ".join(classes)+"\" src=\"http://placeharold.com/100/100\" />"
 	return "<img class=\""+" ".join(classes)+"\" src=data:image/"+ profile_user_image_type + ";base64," + profile_user_image_data + ' />'
 def replace_specials(stuff):
 	return stuff.replace("SPECIAL:args[0]",args[0]).replace("SPECIAL:args[1]",args[1])
@@ -505,6 +513,8 @@ if postuser and postpass:
 		render.append("redirect_to_dashboard")
 	else:
 		render.append("invalid_password")
+elif username == "debug":
+	render = []
 elif username == "login":
 	render = ["login_page"]
 elif username == "register":
@@ -1024,7 +1034,11 @@ elif username and ("redirect_to_dashboard" not in render):
 								render.append("new_post_form")
 							else:
 								cur.execute("SELECT `Time_Of_Posting` FROM `Posts` WHERE `Poster` = '" + sql_validate(username) + "' ORDER BY `Time_Of_Posting` DESC LIMIT 1;")
-								time_of_last_post = cur.fetchone()[0]
+								row = cur.fetchone()
+								if row:
+									time_of_last_post = row[0]
+								else:
+									time_of_last_post = 0
 								if time.time() - time_of_last_post < 30:
 									render.append("new_post_throttled")
 								else:
@@ -1071,6 +1085,8 @@ elif username and ("redirect_to_dashboard" not in render):
 								profile_user = username
 						except:
 							render.append("execute_post_unknown_error")
+							render.append("debug")
+							debug = traceback.format_exc()
 							render.append("new_post_form")
 					if args[2] == "edit_post":
 						pass
@@ -1384,10 +1400,16 @@ elif username and ("redirect_to_dashboard" not in render):
 												if last_message_time:
 													if int(time.time()) - last_message_time <= 1:
 														return
-											bad = ['cunt', 'nigger', 'bitch', 'fuck', 'fag', 'faggot', ' kike ', ' ass ', 'dumbass', 'smartass', ' i ', 'shit']
-											good = ['c***', '******', 'b**ch', 'f**k', '***', '******', ' respectable jewish person ', ' *** ', 'dumb***', 'smart***', ' I ', 'sh*t']
+											bad = ['cunt', 'nigger', 'bitch', 'fuck', 'faggot', 'dumbass', 'smartass', 'shit']
+											good = ['c***', '******', 'b**ch', 'f**k', '******', 'dumb***', 'smart***', 'sh*t']
 											for i in xrange(len(bad)):
-												message_to_log = message_to_log.replace(bad[i],good[i])
+												temp = re.compile(re.escape(bad[i]), re.IGNORECASE)
+												message_to_log = temp.sub(good[i],message_to_log)
+											bad = ['kike','ass','fag','i']
+											good = ["respectable jewish gentleman","a**","***","I"]
+											for i in xrange(len(bad)):
+												temp = re.compile(r"\b("+re.escape(bad[i])+r")(s?)\b", re.IGNORECASE)
+												message_to_log = temp.sub(good[i],message_to_log)
 											cur.execute("INSERT INTO `Chat_messages` (`Username`, `Timestamp`, `Message`, `Channel`, `Special_type`) VALUES ('"+sql_validate(username)+"','"+sql_validate(str(int(time.time())))+"','"+sql_validate(message_to_log)+"', '"+sql_validate(chat_channel)+"','"+sql_validate(str(message_special_type))+"');")
 											return
 									else:
@@ -1591,41 +1613,41 @@ else:
 	<body id="body" onload='FixShit();'>
 		% if "chat_embedded" in render:
 			<div id="chatbox-inner">
-			<%
-				if chat_is_locked == 1:
-					chat_is_locked = "Chat is currently locked"
-				else:
-					chat_is_locked = False
-				cur.execute("SELECT `Timestamp`, `Message`, `Message_ID` FROM `Chat_messages` WHERE `Channel` = '"+sql_validate(chat_channel)+"' ORDER BY `Timestamp` DESC LIMIT 15;")
-			%>
-			% for row in reversed(cur.fetchall()):
-				% if not row[1] == "SPECIAL:DO-NOT-DISPLAY":
-					% if permissions['can_erase_chat_messages'] == 1:
-						<button onClick="delete_message(${row[2]});">Delete</button>
+				<%
+					if chat_is_locked == 1:
+						chat_is_locked = "Chat is currently locked"
+					else:
+						chat_is_locked = False
+					cur.execute("SELECT `Timestamp`, `Message`, `Message_ID` FROM `Chat_messages` WHERE `Channel` = '"+sql_validate(chat_channel)+"' ORDER BY `Timestamp` DESC LIMIT 15;")
+				%>
+				% for row in reversed(cur.fetchall()):
+					% if not row[1] == "SPECIAL:DO-NOT-DISPLAY":
+						% if permissions['can_erase_chat_messages'] == 1:
+							<button onClick="delete_message(${row[2]});">Delete</button>
+						% endif
+						% if permissions['can_edit_chat_messages'] == 1:
+							<button onClick="edit_message(${row[2]});">Edit</button>
+						% endif
+						<span class="chat_timestamp">${time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(row[0])))}</span> <span id="message-${row[2]}" class="chat_message">${replace_specials(row[1].replace("<p>","").replace("</p>","")) }</span>
+						<br />
 					% endif
-					% if permissions['can_edit_chat_messages'] == 1:
-						<button onClick="edit_message(${row[2]});">Edit</button>
-					% endif
-					<span class="chat_timestamp">${time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(row[0])))}</span> <span id="message-${row[2]}" class="chat_message">${replace_specials(row[1].replace("<p>","").replace("</p>","")) }</span>
-					<br />
-				% endif
-			% endfor
-			% if chat_is_locked:
-				<span style="color:grey;">${chat_is_locked}</span>
-			% endif
-			<%
-				cur.execute("SELECT `channel_banlist` FROM `Chat_channels` WHERE `channel_name` = '"+sql_validate(chat_channel)+"';")
-				list_of_banned_people = cur.fetchone()[0]
-			%>
-			% if "," + username + "," in list_of_banned_people:
+				% endfor
 				% if chat_is_locked:
-					<br />
+					<span style="color:grey;">${chat_is_locked}</span>
 				% endif
-				<span style="color:grey;">You are banned from speaking</span>
-			% endif
+				<%
+					cur.execute("SELECT `channel_banlist` FROM `Chat_channels` WHERE `channel_name` = '"+sql_validate(chat_channel)+"';")
+					list_of_banned_people = cur.fetchone()[0]
+				%>
+				% if "," + username + "," in list_of_banned_people:
+					% if chat_is_locked:
+						<br />
+					% endif
+					<span style="color:grey;">You are banned from speaking</span>
+				% endif
 			</div>
 			<%
-				cur.execute("SELECT `Username` FROM `sessions` WHERE `Chat_channel_in` = '"+sql_validate(chat_channel)+"';")
+				cur.execute("SELECT `Username` FROM `sessions` WHERE `Chat_channel_in` = '"+sql_validate(chat_channel)+"' AND `Timestamp` > '"+str(int(time.time())-5)+"';")
 			%>
 			<table class="table chat_userlist">
 				<thead>
@@ -2816,7 +2838,7 @@ else:
 							</span></td>
 							<td>${row[1]}</td>
 							<td>
-							${newline_to_br(shorten_to_reasonable_length(row[2],100))}
+								${newline_to_br(shorten_to_reasonable_length(row[2],100))}
 							</td>
 							<td>
 							% if len(row[2]) > 100:
