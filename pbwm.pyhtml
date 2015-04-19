@@ -2273,7 +2273,7 @@ else:
 						cur.execute("SELECT `Post_Contents` FROM `Posts` WHERE `Poster` = '" + sql_validate(username) + "' AND `Post_ID` = '" + sql_validate(str(post_to_edit)) + "';")
 					%>
 					% for row in cur.fetchall():
-						<textarea rows="6" cols="80" name="edit_post_new_contents">${row[0]}</textarea>
+						<textarea rows="6" cols="80" name="edit_post_new_contents">${sanitize_html(row[0])}</textarea>
 						<br />
 						<%
 							break # This is for formatting. If I indent it here, the extra tabs show up. If you were to edit the same post multiple times, it would add more and more tabs.
@@ -2291,7 +2291,7 @@ else:
 
 			% endif
 			% if "blog_search_results" in render:
-				<h3>Results for ${string_to_search_for}</h3>
+				<h3>Results for ${sanitize_html(string_to_search_for)}</h3>
 				<%
 					cur.execute("SELECT `Post_ID`,`Poster`, `Time_Of_Posting`, `Post_Contents`, `privacy_settings` FROM `Posts` WHERE `Post_Contents` LIKE '%" + sql_validate(string_to_search_for) + "%' ORDER BY `Time_Of_Posting` DESC;")
 					rows = cur.fetchall()
@@ -2360,7 +2360,7 @@ else:
 							%>
 							<h3>Comments</h3>
 							% for subrow in rows:
-								Posted by: <span class="post_poster"><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(str(subrow[1])) + '"'}>${subrow[1]}</a></span><br />
+								Posted by: <span class="post_poster"><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(str(subrow[1])) + '"'}>${sanitize_html(subrow[1])}</a></span><br />
 								Posted at: <span class="post_time">${time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(subrow[2])))}</span><br />
 								% if username == subrow[1]:
 									<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/edit_comment/" + base64.urlsafe_b64encode(str(subrow[0])) + '"'}>Edit comment</a><br />
@@ -2446,7 +2446,7 @@ else:
 			% if "send_form" in render:
 				<h3>Send a message</h3>
 				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/messages/send_post" method="post">
-					To: <input type="text" name="send_post_to" value=${'"' + messages_send_form_user_to_address_to + '"'} />
+					To: <input type="text" name="send_post_to" value=${'"' + sanitize_html(messages_send_form_user_to_address_to) + '"'} />
 					<select name="send_post_priority">
 						<option value="0">None</option>
 						<option value="1">Low</option>
@@ -2463,7 +2463,7 @@ else:
 			% endif
 			% if "view_full_message" in render:
 				<h3>Message</h3>
-				From <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(view_full_message_from) + '"'}>${view_full_message_from}</a>:<br />
+				From <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(view_full_message_from) + '"'}>${sanitize_html(view_full_message_from)}</a>:<br />
 				${newline_to_br(view_full_message_string)}
 				<hr />
 			% endif
@@ -2491,7 +2491,7 @@ else:
 					% for x in search_results:
 						<tr>
 						<td>${get_profile_picture(x,["profile_picture_for_lists"])}</td>
-						<td><a href="${root_dir}${args[0]}/${args[1]}/profile/${base64.urlsafe_b64encode(x)}">${x}</a></td>
+						<td><a href="${root_dir}${args[0]}/${args[1]}/profile/${base64.urlsafe_b64encode(x)}">${sanitize_html(x)}</a></td>
 						<td>${newline_to_br(shorten_to_reasonable_length(get_profile(x),100))}</td>
 						</tr>
 					% endfor
@@ -2500,13 +2500,13 @@ else:
 			% endif
 			% if "profile_page" in render:
 				${get_profile_picture(profile_user,["profile_picture"])}
-				<h3>User profile for <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(profile_user) + '"'} class="user_header">${profile_user}</a></h3>
-				<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/send_form/" + base64.urlsafe_b64encode(profile_user) + '"'}>Send mail to ${profile_user}</a>
+				<h3>User profile for <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(profile_user) + '"'} class="user_header">${sanitize_html(profile_user)}</a></h3>
+				<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/messages/send_form/" + base64.urlsafe_b64encode(profile_user) + '"'}>Send mail to ${sanitize_html(profile_user)}</a>
 				<br />
 				% if profile_user in currently_following.split(","):
-					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/unfollow/" + base64.urlsafe_b64encode(profile_user) + '"'}>Unfollow ${profile_user}</a>
+					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/unfollow/" + base64.urlsafe_b64encode(profile_user) + '"'}>Unfollow ${sanitize_html(profile_user)}</a>
 				% else:
-					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/follow/" + base64.urlsafe_b64encode(profile_user) + '"'}>Follow ${profile_user}</a>
+					<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/follow/" + base64.urlsafe_b64encode(profile_user) + '"'}>Follow ${sanitize_html(profile_user)}</a>
 				% endif
 				<%
 					cur.execute("SELECT `Follows` FROM `Following` WHERE `Username` = '" + sql_validate(profile_user) + "';")
@@ -2546,7 +2546,7 @@ else:
 				% if "who_does_x_follow_page" in render:
 					<table class="table">
 						<thead>
-							<tr><td></td><td>People who <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(profile_user) + '"'}>${profile_user}</a> follows</tr></td>
+							<tr><td></td><td>People who <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(profile_user) + '"'}>${sanitize_html(profile_user)}</a> follows</tr></td>
 						</thead>
 						<tbody>
 							<%
@@ -2555,7 +2555,7 @@ else:
 							% for row in cur.fetchall():
 								% for user in row[0].split(","):
 									% if user:
-										<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(user) + '"'}>${user}</a></tr></td>
+										<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(user) + '"'}>${sanitize_html(user)}</a></tr></td>
 									% endif
 								% endfor
 							% endfor
@@ -2567,7 +2567,7 @@ else:
 				% if "who_follows" in render:
 					<table class="table">
 						<thead>
-							<tr><td></td><td>People who follow <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(profile_user) + '"'}>${profile_user}</a></tr></td>
+							<tr><td></td><td>People who follow <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(profile_user) + '"'}>${sanitize_html(profile_user)}</a></tr></td>
 						</thead>
 						<tbody>
 							<%
@@ -2575,7 +2575,7 @@ else:
 							%>
 							% for row in cur.fetchall():
 								% if row[0]:
-									<tr><td>${get_profile_picture(row[0],["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(row[0]) + '"'}>${row[0]}</a></tr></td>
+									<tr><td>${get_profile_picture(row[0],["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(row[0]) + '"'}>${sanitize_html(row[0])}</a></tr></td>
 								% endif
 							% endfor
 						</tbody>
@@ -2632,7 +2632,7 @@ else:
 			% endif
 			% if "delete_account" in render:
 				<h3>Warning! This will delete your account, and all your settings! Are you sure you wish to continue?</h3>
-				<h3><a href="${root_dir}${args[0]+"/"+args[1]}/really_delete_account" class="delete">Yes I'm Sure</a> - <a href="${root_dir}${args[0]+"/"+args[1]}/dashboard">Nope me the fuck out of here</a></h3>
+				<h3><a href="${root_dir}${args[0]+"/"+args[1]}/really_delete_account" class="delete_user">Yes I'm Sure</a> - <a href="${root_dir}${args[0]+"/"+args[1]}/dashboard">Nope me the fuck out of here</a></h3>
 			% endif
 			% if "register_page" in render:
 				<h3>Register a new account</h3>
@@ -2644,10 +2644,10 @@ else:
 				</form>
 			% endif
 			% if "login_page" in render:
-				<h3>${get_logged_in_users()}</h3>
+				<h4>${get_logged_in_users()}</h4>
 				<form name="input" action="" method="post">
 					% if "invalid_password" in render:
-						Username: <input type="text" name="postuser" value="${postuser}"><br />
+						Username: <input type="text" name="postuser" value="${sanitize_html(postuser)}"><br />
 					% else:
 						Username: <input type="text" name="postuser"><br />
 					% endif
@@ -2657,7 +2657,7 @@ else:
 				<br />Need an account? <a href="${root_dir}register">Register here</a>
 			% endif
 			% if "dashboard" in render:
-				<h3>Welcome <a class="user_header" href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(username) + '"'}>${username}</a>!</h3>
+				<h3>Welcome <a class="user_header" href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(username) + '"'}>${sanitize_html(username)}</a>!</h3>
 				<h3>You last logged in at ${time.strftime('%A, %B %d, %Y %H:%M:%S', time.localtime(int(last_login_time)))} from ${last_login_address}</h3>
 				<h4><a href="${root_dir}${args[0]}/${args[1]}/messages">
 				<%
@@ -2737,7 +2737,7 @@ else:
 				<hr />
 				<form name="input" action="${root_dir + args[0]+"/"+args[1]}/settings/profile_change" method="post">
 					<h3>Change your profile</h3>
-					<textarea rows="6" cols="80" name="profile_change_new_profile">${get_profile(username)}</textarea><br />
+					<textarea rows="6" cols="80" name="profile_change_new_profile">${sanitize_html(get_profile(username))}</textarea><br />
 					<input type="submit" value="Submit">
 				</form>
 				<hr />
@@ -2779,7 +2779,7 @@ else:
 			% if "report_successful" in render:
 				<h3>Report for ${report_table}</h3>
 				% for row in report_rows:
-					${row | h}<br />
+					${sanitize_html(row)}<br />
 				% endfor
 				<a href="${root_dir}${args[0]+"/"+args[1]}/reports">Generate another report</a>
 			% endif
@@ -2841,7 +2841,7 @@ else:
 								!
 							% endfor
 							</span></td>
-							<td>${row[1]}</td>
+							<td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(row[1]) + '"'}>${sanitize_html(row[1])}</a></td>
 							<td>
 								${newline_to_br(shorten_to_reasonable_length(row[2],100))}
 							</td>
