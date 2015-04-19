@@ -962,7 +962,7 @@ elif username and ("redirect_to_dashboard" not in render):
 										if user_exists:
 											try:
 												if permissions["can_send_messages_with_increased_priority"] == 1 or (int(d['send_post_priority']) <= 3 and int(d['send_post_priority']) >= 0):
-													send_email_to_user(d['send_post_to'],"New message from " + username, "You have a new message from " + username + " on PBWM, at " + '<a href="'+url_scheme+'://' + fully_qualified_domain_name + '">'+url_scheme+'://' + fully_qualified_domain_name + "</a>. <br /> Message data is as follows. <br /><br />" + newline_to_br(d['send_post_missive']))
+													send_email_to_user(d['send_post_to'],"New message from " + username, "You have a new message from " + sanitize_html(username) + " on PBWM, at " + '<a href="'+url_scheme+'://' + fully_qualified_domain_name + '">'+url_scheme+'://' + fully_qualified_domain_name + "</a>. <br /> Message data is as follows. <br /><br />" + newline_to_br(d['send_post_missive']))
 													cur.execute("INSERT INTO `Private_Messages` (`To`, `From`, `Missive`, `Priority`, `timestamp`) VALUES ('"+sql_validate(d['send_post_to'])+"', '"+sql_validate(username)+"', '"+sql_validate(d['send_post_missive'])+"', '"+sql_validate(d['send_post_priority'])+"', '"+sql_validate(str(int(time.time())))+"');")
 													render.append("messages_send_post_success")
 												else:
@@ -1464,7 +1464,7 @@ elif username and ("redirect_to_dashboard" not in render):
 								for row in cur.fetchall():
 									users += row
 								for user in users:
-									send_email_to_user(user,"New message from " + username, "You have a new message from " + username + " on PBWM, at " + '<a href="'+url_scheme+'://' + fully_qualified_domain_name + '">'+url_scheme+'://' + fully_qualified_domain_name + "</a>. <br /> Message data is as follows. <br /><br />" + newline_to_br(mass_message_data))
+									send_email_to_user(user,"New message from " + username, "You have a new message from " + sanitize_html(username) + " on PBWM, at " + '<a href="'+url_scheme+'://' + fully_qualified_domain_name + '">'+url_scheme+'://' + fully_qualified_domain_name + "</a>. <br /> Message data is as follows. <br /><br />" + newline_to_br(mass_message_data))
 									cur.execute("INSERT INTO `Private_Messages` (`To`,`From`,`Missive`,`Priority`,`timestamp`) VALUES('"+sql_validate(user)+"','"+sql_validate(username)+"','"+sql_validate(mass_message_data)+"','0','"+sql_validate(str(int(time.time())))+"')")
 								render.append("mass_message_success")
 								render.append("messages")
