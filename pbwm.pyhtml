@@ -4,7 +4,7 @@
 #	Extend the API
 import sys
 sys.path.append("/usr/local/lib/python2.7/site-packages/")
-import os, hashlib, random, base64, time, pymysql, traceback, re, markdown2, smtplib, imghdr, math, copy
+import os, hashlib, random, base64, time, pymysql, traceback, re, markdown2, smtplib, imghdr, math, copy, bleach
 from email.mime.text import MIMEText
 %>
 <%def name="page_navigation(total)">
@@ -89,7 +89,7 @@ from email.mime.text import MIMEText
 						</span>
 					</td>
 					<td>
-						<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(From) + '"'}>${From}</a>
+						<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(From) + '"'}>${sanitize_html(From)}</a>
 					</td>
 					<td>
 						${newline_to_br(shorten_to_reasonable_length(Missive,100))}
@@ -112,7 +112,7 @@ from email.mime.text import MIMEText
 </%def>
 <%def name="render_post_function(post_id,poster,post_time,post_contents,permissions,show_table=False)">
 
-	Posted by: <span class="post_poster"><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(poster) + '"'}>${poster}</a></span><br />
+	Posted by: <span class="post_poster"><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(poster) + '"'}>${sanitize_html(poster)}</a></span><br />
 	Posted at: <span class="post_time">${time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(post_time)))}</span><br />
 	Shared with:
 	% if int(permissions) == 3:
@@ -120,7 +120,7 @@ from email.mime.text import MIMEText
 	% elif int(permissions) == 2:
 		People with the permalink
 	% elif int(permissions) == 1:
-		People <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(poster) + '"'}>${poster}</a> follows
+		People <a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(poster) + '"'}>${sanitize_html(poster)}</a> follows
 	% else:
 		The poster only
 	% endif
@@ -178,7 +178,7 @@ from email.mime.text import MIMEText
 			<tbody>
 				% for user in likes_this.split(","):
 					% if user:
-						<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(user) + '"'}>${user}</a></td></tr>
+						<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(user) + '"'}>${sanitize_html(user)}</a></td></tr>
 					% endif
 				% endfor
 			</tbody>
@@ -251,6 +251,8 @@ general_redirect = False
 conn = pymysql.connect(host="127.0.0.1", port=3306, user="pbwm", passwd='', db="pbwm")
 conn.autocommit(1)
 cur = conn.cursor()
+def sanitize_html(stuff):
+	return bleach.clean(stuff)
 def get_logged_in_users():
 	cur.execute("SELECT COUNT(`Timestamp`) FROM `sessions` WHERE `Timestamp` > "+str(int(time.time()) - 420)+";") # 7 minutes
 	num = cur.fetchone()[0]
@@ -1500,7 +1502,7 @@ else:
 			<meta http-equiv="refresh" content="0; url=${root_dir}login" />
 		% endif
 		% if not "chat_embedded" in render:
-			<link rel="stylesheet" href="${css}" />
+			<link rel="stylesheet" href="${sanitize_html(css)}" />
 		% endif
 		% if "chat_url" in render:
 			<script type="text/javascript" src="${url_scheme}://ajax.googleapis.com/ajax/libs/jquery/1.3/jquery.min.js"></script>
@@ -1509,7 +1511,7 @@ else:
 					$("#submitmsg").click(function(){	
 						var clientmsg = $("#usermsg").val();
 						if (clientmsg.substring(0,8) == "/banlist") {
-							window.location.replace(${'"' + root_dir + args[0] + "/" + args[1] + "/chat/banlist/" + chat_channel + '"'})
+							window.location.replace(${'"' + root_dir + args[0] + "/" + args[1] + "/chat/banlist/" + sanitize_html(chat_channel) + '"'})
 						} else if (clientmsg.substring(0,9) == "/channel ") {
 							if (clientmsg.substring(0,1) == "#") {
 								newchannel = clientmsg.substring(10);
@@ -1518,7 +1520,7 @@ else:
 							}
 							window.location.replace(${'"' + root_dir + args[0] + "/" + args[1] + "/chat/" + '"'}.concat(newchannel));
 						} else {
-							$.post(${'"' + root_dir + args[0] + "/" + args[1] + "/chat/post_message" + '"'}, {text: clientmsg, channel: ${'"' + chat_channel + '"'} });
+							$.post(${'"' + root_dir + args[0] + "/" + args[1] + "/chat/post_message" + '"'}, {text: clientmsg, channel: ${'"' + sanitize_html(chat_channel) + '"'} });
 							$("#usermsg").attr("value", "");
 							$('#submitmsg').attr('disabled','disabled');
 							setTimeout(function(){$('#submitmsg').removeAttr("disabled")},1000);
@@ -1528,7 +1530,7 @@ else:
 					function loadLog(){
 						var oldscrollHeight = $("#chatbox").attr("scrollHeight") - 20;
 						$.ajax({
-							url: ${'"' + root_dir + args[0] + "/" + args[1] + "/chat/embedded/" + chat_channel + '"'},
+							url: ${'"' + root_dir + args[0] + "/" + args[1] + "/chat/embedded/" + sanitize_html(chat_channel) + '"'},
 							cache: false,
 							success: function(html){		
 								$("#chatbox").html(html); //Insert chat log into the #chatbox div				
@@ -1563,7 +1565,7 @@ else:
 					}
 				};
 				function change_channel() {
-					x = prompt("Your current channel is #${chat_channel}","#");
+					x = prompt("Your current channel is #${sanitize_html(chat_channel)}","#");
 					$("#usermsg").val('/channel '+x);
 					if (x) {
 						if (x.substring(0,1) != "#") {
@@ -1658,7 +1660,7 @@ else:
 				</thead>
 				<tbody>
 					% for row in cur.fetchall():
-						<tr><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(row[0]) + '"'}>${row[0] | h}</a></td></tr>
+						<tr><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(row[0]) + '"'}>${sanitize_html(row[0])}</a></td></tr>
 					% endfor
 				</tbody>
 			</table>
@@ -1831,16 +1833,16 @@ else:
 				<span class="error">No user was specified to unfollow</span>
 			% endif
 			% if "unfollow_success" in render:
-				<span class="success">You no longer follow ${to_unfollow}</span>
+				<span class="success">You no longer follow ${sanitize_html(to_unfollow)}</span>
 			% endif
 			% if "follow_error_already_following" in render:
-				<span class="warning">You already follow ${to_follow}</span>
+				<span class="warning">You already follow ${sanitize_html(to_follow)}</span>
 			% endif
 			% if "follow_error_no_user_specified" in render:
 				<span class="error">Either you failed to specify a user or that user doesn't exist</span>
 			% endif
 			% if "follow_successful" in render:
-				<span class="success">You now follow ${to_follow}</span>
+				<span class="success">You now follow ${sanitize_html(to_follow)}</span>
 			% endif
 			% if "follow_error_user_does_not_exist" in render:
 				<span class="error">No such user</span>
@@ -1885,10 +1887,10 @@ else:
 				<span class="success">Email changed successful</span>
 			% endif
 			% if "search_no_results" in render:
-				<span class="warning">No results for ${search_string}</span>
+				<span class="warning">No results for ${sanitize_html(search_string)}</span>
 			% endif
 			% if "error_search_error" in render:
-				<span class="error">Unspecified error searching for ${search_string}</span>
+				<span class="error">Unspecified error searching for ${sanitize_html(search_string)}</span>
 			% endif
 			% if "error_profile_error" in render:
 				<span class="error">Unspecified error retrieving user profile</span>
@@ -1939,7 +1941,7 @@ else:
 				<span class="success">Css settings change was successful</span>
 			% endif
 			% if "user_deletion_successful" in render:
-				<span class="success">User deletion of ${d['delete_other_account_account']} was successful</span>
+				<span class="success">User deletion of ${sanitize_html(d['delete_other_account_account'])} was successful</span>
 			% endif
 			% if "user_deletion_unknown_status" in render:
 				<span class="error">User deletion returned with an unknown status. Please verify of the deletion went through</span>
@@ -1961,7 +1963,7 @@ else:
 		% if "login_successful" in render:
 			<div class="sidebar">
 
-				<p>Signed in as <a href="${root_dir + args[0] + "/" + args[1]}/profile/${base64.urlsafe_b64encode(username)}">${username}</a></p>
+				<p>Signed in as <a href="${root_dir + args[0] + "/" + args[1]}/profile/${base64.urlsafe_b64encode(username)}">${sanitize_html(username)}</a></p>
 					<div class="navigation">
 					<ul>
 						<li><a href="${root_dir}${args[0]+"/"+args[1]}/dashboard">Dashboard</a></li>
@@ -2003,7 +2005,7 @@ else:
 											render_post = True
 							%>
 							% if render_post:
-								<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(row[1]) + '"'}>${row[1]}</a>
+								<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(row[1]) + '"'}>${sanitize_html(row[1])}</a>
 								at ${time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(row[2])))}
 								<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/view_post/" + base64.urlsafe_b64encode(str(row[0])) + '"'}>View post</a>
 								<p class="newsfeed_post">
@@ -2025,7 +2027,7 @@ else:
 			<h2>API</h2>
 		% endif
 		% if "chat_banlist" in render:
-			<h2>Banlist for ${chat_channel | h}</h2>
+			<h2>Banlist for ${sanitize_html(chat_channel)}</h2>
 		% endif
 		% if "chat_url" in render:
 			<h2>Chat</h2>
@@ -2072,7 +2074,7 @@ else:
 		% if "profile_page" in render and not "who_does_x_follow_page" in render:
 			<h2>User profile</h2>
 		% elif "who_does_x_follow_page" in render:
-			<h2>Who follows the profile ${profile_user}</h2>
+			<h2>Who follows the profile ${sanitize_html(profile_user)}</h2>
 		% endif
 		% if "settings" in render:
 			<h2>Settings</h2>
@@ -2090,7 +2092,7 @@ else:
 			<h2>Reports</h2>
 		% endif
 		% if "report_successful" in render:
-			<h2>Report for ${report_table}</h2>
+			<h2>Report for ${sanitize_html(report_table)}</h2>
 		% endif
 		% if "delete_account" in render:
 			<h2>Warning</h2>
@@ -2135,7 +2137,7 @@ else:
 						</thead>
 						<tbody>
 							% for user in users:
-								<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td>${user}</td></tr>
+								<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td>${sanitize_html(user)}</td></tr>
 							% endfor
 						</tbody>
 					</table>
@@ -2148,7 +2150,7 @@ else:
 			% if "chat_banlist" in render:
 				<table class="table">
 					<thead>
-						<tr><td></td><td>Chat banlist for ${chat_channel | h}</td></tr>
+						<tr><td></td><td>Chat banlist for ${sanitize_html(chat_channel)}</td></tr>
 					</thead>
 					<tbody>
 						<%
@@ -2158,7 +2160,7 @@ else:
 						%>
 						% for user in users:
 							% if user:
-								<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(user) + '"'}>${user}</a></tr></td>
+								<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(user) + '"'}>${sanitize_html(user)}</a></tr></td>
 							% endif
 						% endfor
 					</tbody>
@@ -2166,7 +2168,7 @@ else:
 				${page_navigation(len(allUsers))}
 			% endif
 			% if "chat_url" in render:
-				<h3>Welcome to ${"#" + chat_channel | h}</h3>
+				<h3>Welcome to ${sanitize_html("#" + chat_channel)}</h3>
 				<span style="font-weight:bold;font-size:1.2em;">Actions</span> <button onclick="change_channel()">Change channel</button> <button onclick="banlist()">Banlist</button>
 				<br />
 				% if permissions['can_view_chat_admin_panel'] == 1:
@@ -2185,7 +2187,7 @@ else:
 			% if "recover_success" in render:
 				<h3>Your password has been reset</h3>
 				Your new password is below
-				<p id="newpass">${newpass | h}</p>
+				<p id="newpass">${sanitize_html(newpass)}</p>
 			% endif
 			% if "recover_form" in render:
 				<h3>Enter your username or email address</h3>
@@ -2224,7 +2226,7 @@ else:
 					<tbody>
 						% for user in likes_this_comment_array:
 							% if user:
-								<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(user) + '"'}>${user}</a></td></tr>
+								<tr><td>${get_profile_picture(user,["profile_picture_for_lists"])}</td><td><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(user) + '"'}>${sanitize_html(user)}</a></td></tr>
 							% endif
 						% endfor
 					</tbody>
@@ -2249,7 +2251,7 @@ else:
 						cur.execute("SELECT `Comment_data` FROM `Comments` WHERE `Poster` = '" + sql_validate(username) + "' AND `Post_ID` = '" + sql_validate(str(edit_comment_comment_id)) + "';")
 					%>
 					% for row in cur.fetchall():
-						<textarea rows="6" cols="80" name="edit_comment_new_contents">${row[0]}</textarea>
+						<textarea rows="6" cols="80" name="edit_comment_new_contents">${sanitize_html(row[0])}</textarea>
 						<br />
 						<%
 							break # This is for formatting. If I indent it here, the extra tabs show up. If you were to edit the same post multiple times, it would add more and more tabs.
