@@ -6,8 +6,7 @@ import sys
 sys.path.append("/usr/local/lib/python2.7/site-packages/")
 import os, hashlib, random, base64, time, pymysql, traceback, re, markdown2, smtplib, imghdr, math, copy, bleach
 from email.mime.text import MIMEText
-%>
-<%def name="page_navigation(total)">
+%><%def name="page_navigation(total)">
 	<div id="navigation">
 		% if page == 1:
 			&lt;&lt; &lt;
@@ -65,8 +64,7 @@ from email.mime.text import MIMEText
 		% endif
 	</div>
 		
-</%def>
-<%def name="generate_table_of_messages(list_of_stuff)">
+</%def><%def name="generate_table_of_messages(list_of_stuff)">
 	<table class="table">
 		<thead>
 			<tr><td>Timestamp</td><td>Priority</td><td>From</td><td>Message</td><td>Actions</td></tr>
@@ -109,8 +107,7 @@ from email.mime.text import MIMEText
 			% endfor
 		</tbody>
 	</table>
-</%def>
-<%def name="render_post_function(post_id,poster,post_time,post_contents,permissions,show_table=False)">
+</%def><%def name="render_post_function(post_id,poster,post_time,post_contents,permissions,show_table=False)">
 
 	Posted by: <span class="post_poster"><a href=${'"' + root_dir + args[0] + "/" + args[1] + "/profile/" + base64.urlsafe_b64encode(poster) + '"'}>${sanitize_html(poster)}</a></span><br />
 	Posted at: <span class="post_time">${time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(post_time)))}</span><br />
@@ -214,9 +211,7 @@ from email.mime.text import MIMEText
 	<p class="post_contents">${replace_specials(newline_to_br(post_contents))}</p>
 
 
-</%def>
-
-<%
+</%def><%
 for item in d:
 	d[item] = str(d[item])
 render = []
@@ -224,11 +219,11 @@ fully_qualified_domain_name = "niles.mooo.com:4000"
 url_scheme="http"
 #fully_qualified_domain_name = "localhost:4443"
 domain_name_no_port = fully_qualified_domain_name.split(":")[0]
-root_dir = "/pbwm_dynamic/"
-#root_dir = "/pbwm/pbwm.pyhtml?pbwm="
-pbwm_dir = "/"
-get_variable_character = "?"
-#get_variable_character = "&"
+#root_dir = "/pbwm_dynamic/"
+root_dir = "/pbwm/pbwm.pyhtml?pbwm="
+pbwm_dir = "/pbwm/"
+#get_variable_character = "?"
+get_variable_character = "&" # Toggle these two lines if you're not using the mvc
 chatbox_type = "polling"
 things_per_page = 15
 #things_per_page = 1
@@ -263,15 +258,22 @@ def get_logged_in_users():
 		return_value += "There is currently 1 user online in the last 7 minutes."
 	return_value += "</a>"
 	return return_value
+def get_profile_picture_data(user):
+	if not user:
+		return
+	cur.execute("SELECT `Data` FROM `Profile_pictures` WHERE `Username` = '"+sql_validate(user)+"';")
+	row = cur.fetchone()
+	if not row:
+		return
+	return row[0]
 def get_profile_picture(user,classes):
 	if not user:
 		return
-	cur.execute("SELECT `type`,`Data` FROM `Profile_pictures` WHERE `Username` = '"+sql_validate(user)+"';")
+	cur.execute("SELECT `type` FROM `Profile_pictures` WHERE `Username` = '"+sql_validate(user)+"';")
 	row = cur.fetchone()
 	if not row:
 		return
 	profile_user_image_type = row[0]
-	profile_user_image_data = row[1]
 	if get_permissions(user)['profile_picture_has_border'] == 1:
 		classes += ["admin_profile_picture"]
 	if profile_user_image_type == "None":
@@ -279,7 +281,7 @@ def get_profile_picture(user,classes):
 			return "<img class=\""+" ".join(classes)+"\" src=" + '"' + pbwm_dir + "pbwm_static/default.png" + '"' + " />"
 		else:
 			return "<img class=\""+" ".join(classes)+"\" src=\"http://placeharold.com/100/100\" />"
-	return "<img class=\""+" ".join(classes)+"\" src=data:image/"+ profile_user_image_type + ";base64," + profile_user_image_data + ' />'
+	return "<img class=\""+" ".join(classes)+"\" src=\"" + root_dir + "profile_image/" + base64.urlsafe_b64encode(user) + "." + profile_user_image_type + '\" />'
 def replace_specials(stuff):
 	return stuff.replace("SPECIAL:args[0]",args[0]).replace("SPECIAL:args[1]",args[1])
 def check_if_valid_email(stuff):
@@ -631,6 +633,8 @@ elif username == "api":
 	render = ["api_documentation"]
 elif username == "online":
 	render = ["list_of_online_users"]
+elif username == "profile_image":
+	render = ["profile_image"]
 elif username and ("redirect_to_dashboard" not in render):
 	try:
 		username = base64.urlsafe_b64decode(username)
@@ -1090,8 +1094,6 @@ elif username and ("redirect_to_dashboard" not in render):
 								profile_user = username
 						except:
 							render.append("execute_post_unknown_error")
-							render.append("debug")
-							debug = traceback.format_exc()
 							render.append("new_post_form")
 					if args[2] == "edit_post":
 						pass
@@ -1487,7 +1489,11 @@ elif username and ("redirect_to_dashboard" not in render):
 			render.append("invalid_session")
 else:
 	if not "login_page" in render:
-		render.append("login_page")
+		render.append("login_page") %><%
+if "profile_image" in render:
+	__M_writer(base64.b64decode(get_profile_picture_data(base64.urlsafe_b64decode(args[1][:args[1].find(".")]))))
+	#__M_writer(unicode(base64.b64decode(get_profile_picture_data(base64.urlsafe_b64decode(args[1]))).decode("utf-8", errors="replace"), errors="replace"))
+	return
 %>
 <!doctype html>
 <html>
@@ -2531,9 +2537,9 @@ else:
 				%>
 				% for row in cur.fetchall():
 					% if row[0] == 1:
-						<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/who_follows/" + base64.urlsafe_b64encode(profile_user) + '"'}>1 person follows ${profile_user}</a><br />
+						<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/who_follows/" + base64.urlsafe_b64encode(profile_user) + '"'}>1 person follows ${profile_user | h}</a><br />
 					% else:
-						<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/who_follows/" + base64.urlsafe_b64encode(profile_user) + '"'}>${row[0]} people follow ${profile_user}</a><br />
+						<a href=${'"' + root_dir + args[0] + "/" + args[1] + "/who_follows/" + base64.urlsafe_b64encode(profile_user) + '"'}>${row[0]} people follow ${profile_user | h}</a><br />
 					% endif
 					<%
 						break
